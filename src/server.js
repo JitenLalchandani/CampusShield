@@ -3,9 +3,11 @@
 require("dotenv").config();
 
 const express = require("express");
+const os = require("node:os");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { createStore } = require("./store");
+const { createScannerService } = require("./scanner/manager");
 
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
 const ACTIONS = ["Investigate", "Contain", "Reopen"];
@@ -95,6 +97,14 @@ function text(value, max = 120) {
   return String(value ?? "").trim().slice(0, max);
 }
 
+function sendError(res, next, error) {
+  if (error?.statusCode) {
+    return res.status(error.statusCode).json({ error: error.message });
+  }
+
+  return next(error);
+}
+
 function buildDaily(alerts) {
   const days = [];
   const now = new Date();
@@ -171,9 +181,100 @@ function protectionSummary(devices) {
   };
 }
 
-function createApp({ store }) {
+function createApp({ store, dataDir }) {
   const app = express();
   const version = require("../package.json").version;
+  const scannerDataDir = dataDir || path.join(__dirname, "..", "data");
+
+  const scanner = createScannerService({
+    store,
+    dataDir: scannerDataDir,
+    audit: entry => auditEntry(store, entry),
+    onThreatsChanged: () => refreshHostDevice()
+  });
+
+  app.locals.scanner = scanner;
+
+  // Keeps the host device score in sync with posture findings and open threats.
+  async function refreshHostDevice() {
+    const penalty = await scanner.penalty();
+    let device = await store.devices.get(HOST_DEVICE_ID);
+    const now = new Date().toISOString();
+    let postureScore = null;
+    let checks = Array.isArray(device?.checks) ? device.checks : [];
+    let summary = device?.summary || null;
+
+    if (Number.isFinite(device?.postureScore)) {
+      postureScore = device.postureScore;
+    } else if (Number.isFinite(device?.score)) {
+      postureScore = device.score;
+    }
+
+    if (!device && deviceAuditAvailable()) {
+      try {
+        const audit = await auditHost();
+
+        if (audit.supported) {
+          postureScore = audit.score;
+          checks = audit.checks;
+          summary = {
+            passed: audit.passed,
+            attention: audit.attention,
+            unverified: audit.unverified
+          };
+          device = {
+            id: HOST_DEVICE_ID,
+            name: audit.hostname || os.hostname(),
+            kind: "computer",
+            platform: audit.platform,
+            platformLabel: audit.platformLabel,
+            source: "electron",
+            role: "host",
+            model: audit.model || null,
+            checkedAt: audit.checkedAt || now,
+            createdAt: now,
+            lastSeen: now
+          };
+        }
+      } catch (error) {
+        console.error("Posture audit during scan failed:", error.message);
+      }
+    }
+
+    if (!device) {
+      device = {
+        id: HOST_DEVICE_ID,
+        name: os.hostname() || "This computer",
+        kind: "computer",
+        platform: process.platform,
+        platformLabel: platformLabel(process.platform),
+        source: "electron",
+        role: "host",
+        model: null,
+        checkedAt: null,
+        createdAt: now,
+        lastSeen: now
+      };
+    }
+
+    const base = Number.isFinite(postureScore) ? postureScore : 100;
+    const score = Math.max(0, Math.min(100, Math.round(base - penalty)));
+
+    const updated = {
+      ...device,
+      checks,
+      summary,
+      postureScore: Number.isFinite(postureScore) ? postureScore : null,
+      scanPenalty: penalty,
+      score,
+      grade: gradeFor(score),
+      rulesVersion: RULES_VERSION,
+      lastSeen: now
+    };
+
+    await store.devices.upsert(updated);
+    return updated;
+  }
 
   app.disable("x-powered-by");
   app.use(express.json({ limit: "1mb" }));
@@ -217,6 +318,8 @@ function createApp({ store }) {
   });
 
   app.get("/api/health", (_req, res) => {
+    const scannerStatus = scanner.status();
+
     res.json({
       status: "ok",
       database: store.kind === "mongodb" ? "connected" : "local",
@@ -227,6 +330,12 @@ function createApp({ store }) {
       platformLabel: platformLabel(process.platform),
       scannerAvailable: process.platform === "darwin",
       deviceAuditAvailable: deviceAuditAvailable(),
+      fileScanner: {
+        engineVersion: scannerStatus.engineVersion,
+        signatureVersion: scannerStatus.signatureVersion,
+        signatureCount: scannerStatus.signatureCount,
+        watchSupported: scannerStatus.watchSupported
+      },
       rulesVersion: RULES_VERSION,
       uptimeSeconds: Math.round(process.uptime()),
       dataSource: dataSourceLabel(store)
@@ -274,11 +383,19 @@ function createApp({ store }) {
   });
 
   app.get("/api/protection", async (_req, res) => {
-    const devices = (await store.devices.all()).map(publicDoc);
+    const [devices, scannerStatus, scans, quarantine] = await Promise.all([
+      store.devices.all().then(items => items.map(publicDoc)),
+      scanner.status(),
+      scanner.listScans(20),
+      scanner.listQuarantine()
+    ]);
 
     res.json({
       devices,
       summary: protectionSummary(devices),
+      scanner: scannerStatus,
+      scans,
+      quarantine,
       rulesVersion: RULES_VERSION,
       auditAvailable: deviceAuditAvailable(),
       platform: process.platform,
@@ -311,6 +428,8 @@ function createApp({ store }) {
 
     const existing = await store.devices.get(HOST_DEVICE_ID);
     const checkedAt = audit.checkedAt || new Date().toISOString();
+    const penalty = await scanner.penalty();
+    const score = Math.max(0, Math.min(100, audit.score - penalty));
 
     const device = {
       id: HOST_DEVICE_ID,
@@ -321,8 +440,10 @@ function createApp({ store }) {
       source: "electron",
       role: "host",
       model: audit.model || null,
-      score: audit.score,
-      grade: audit.grade,
+      postureScore: audit.score,
+      scanPenalty: penalty,
+      score,
+      grade: gradeFor(score),
       rulesVersion: audit.rulesVersion,
       checkedAt,
       lastSeen: checkedAt,
@@ -342,7 +463,8 @@ function createApp({ store }) {
       message:
         `Device check on ${device.name}: ${device.score}/100 (${device.grade}) · ` +
         `${audit.passed} passed · ${audit.attention} need attention · ` +
-        `${audit.unverified} unverified`,
+        `${audit.unverified} unverified` +
+        `${penalty ? ` · ${penalty} points from open threats` : ""}`,
       severity: audit.attention > 0 ? "MEDIUM" : null
     });
 
@@ -354,6 +476,107 @@ function createApp({ store }) {
       note:
         "Checks are read-only. Settings are reported as found and were not changed."
     });
+  });
+
+  app.get("/api/scanner", async (_req, res) => {
+    const [status, scans, quarantine] = await Promise.all([
+      scanner.status(),
+      scanner.listScans(20),
+      scanner.listQuarantine()
+    ]);
+
+    res.json({ ...status, scans, quarantine });
+  });
+
+  app.post("/api/scans", async (req, res, next) => {
+    try {
+      const scope = text(req.body?.scope, 10) || "quick";
+      const scan = await scanner.startScan({ scope });
+      return res.status(202).json({ scan });
+    } catch (error) {
+      return sendError(res, next, error);
+    }
+  });
+
+  app.get("/api/scans", async (req, res) => {
+    const limit = Math.min(Math.max(Number.parseInt(req.query.limit, 10) || 10, 1), 50);
+    res.json({ scans: await scanner.listScans(limit) });
+  });
+
+  app.get("/api/scans/:id", async (req, res) => {
+    const scan = await scanner.getScan(req.params.id);
+
+    if (!scan) {
+      return res.status(404).json({ error: "Scan not found" });
+    }
+
+    return res.json({ scan });
+  });
+
+  app.post("/api/scans/:id/cancel", (req, res, next) => {
+    try {
+      return res.json(scanner.cancelScan(req.params.id));
+    } catch (error) {
+      return sendError(res, next, error);
+    }
+  });
+
+  app.post("/api/threats/:scanId/:threatId/quarantine", async (req, res, next) => {
+    try {
+      const result = await scanner.quarantineThreat(req.params.scanId, req.params.threatId);
+      const devices = (await store.devices.all()).map(publicDoc);
+      return res.json({ ...result, summary: protectionSummary(devices) });
+    } catch (error) {
+      return sendError(res, next, error);
+    }
+  });
+
+  app.delete("/api/threats/:scanId/:threatId", async (req, res, next) => {
+    try {
+      const result = await scanner.deleteThreat(req.params.scanId, req.params.threatId);
+      const devices = (await store.devices.all()).map(publicDoc);
+      return res.json({ ...result, summary: protectionSummary(devices) });
+    } catch (error) {
+      return sendError(res, next, error);
+    }
+  });
+
+  app.get("/api/quarantine", async (_req, res) => {
+    res.json({ quarantine: await scanner.listQuarantine() });
+  });
+
+  app.post("/api/quarantine/:id/restore", async (req, res, next) => {
+    try {
+      const result = await scanner.restoreQuarantine(req.params.id);
+      return res.json(result);
+    } catch (error) {
+      return sendError(res, next, error);
+    }
+  });
+
+  app.delete("/api/quarantine/:id", async (req, res, next) => {
+    try {
+      const result = await scanner.deleteQuarantine(req.params.id);
+      return res.json(result);
+    } catch (error) {
+      return sendError(res, next, error);
+    }
+  });
+
+  app.post("/api/scanner/watch", async (req, res, next) => {
+    try {
+      const enabled = req.body?.enabled !== false;
+      const watch = enabled ? await scanner.startWatch() : await scanner.stopWatch();
+
+      await auditEntry(store, {
+        kind: "admin",
+        message: `Real-time folder watching ${enabled ? "enabled" : "disabled"}`
+      });
+
+      return res.json({ watch });
+    } catch (error) {
+      return sendError(res, next, error);
+    }
   });
 
   app.get("/api/devices", async (_req, res) => {
@@ -707,6 +930,8 @@ function createApp({ store }) {
   });
 
   app.delete("/api/events", async (_req, res) => {
+    await scanner.reset();
+
     const [deletedEvents, deletedActions, deletedAudit, deletedDevices] =
       await Promise.all([
         store.events.clear(),
@@ -724,7 +949,7 @@ function createApp({ store }) {
     });
 
     res.json({
-      message: "Events, actions, devices, and audit history cleared",
+      message: "Events, actions, devices, scans, quarantined files, and audit history cleared",
       total: 0,
       deletedEvents,
       deletedActions,
@@ -776,12 +1001,16 @@ async function start(options = {}) {
     dataDir
   });
 
-  const app = createApp({ store });
+  const app = createApp({ store, dataDir });
   const port = options.port ?? Number(process.env.PORT || 3000);
 
   const server = await new Promise((resolve, reject) => {
     const instance = app.listen(port, options.host, () => resolve(instance));
     instance.on("error", reject);
+  });
+
+  server.on("close", () => {
+    app.locals.scanner?.close();
   });
 
   const actualPort = server.address().port;

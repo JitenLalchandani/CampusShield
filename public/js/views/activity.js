@@ -25,6 +25,7 @@ const KINDS = [
   { value: "detection", label: "Detections" },
   { value: "ingest", label: "Ingested" },
   { value: "scan", label: "Scans" },
+  { value: "quarantine", label: "Quarantine" },
   { value: "device", label: "Devices" },
   { value: "admin", label: "Admin" }
 ];

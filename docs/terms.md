@@ -13,19 +13,25 @@ terms. If you do not agree, do not use the Software.
 
 ## 1. What CampusShield is
 
-CampusShield is a **device posture checker and privacy toolbox**, not an antivirus, antimalware,
-firewall, VPN, endpoint-protection platform, or managed detection-and-response service. It:
+CampusShield is a **device posture checker, file scanner, and privacy toolbox**. It is not a full
+antivirus, endpoint-protection platform, firewall, VPN, or managed detection-and-response service. It:
 
 - reads a limited set of operating-system settings with read-only commands and explains the result;
+- scans files on desktop computers against a local signature set and heuristics, and can move a
+  finding you select into a quarantine folder;
+- can watch a few user folders for new files and scan them as they appear, without blocking execution;
 - averages the scores of checked devices into a cross-device safety score;
 - inspects links with local heuristics and checks passwords against a public breach corpus using
   k-anonymity;
 - optionally displays a campus threat queue fed by an operator's own telemetry.
 
-CampusShield does **not** detect, block, remove, or quarantine malware; does not intercept network
-traffic; does not monitor activity continuously; and does not prevent compromise. A high score means
-the checked settings matched the current rules at the time of the check. It is not a guarantee that a
-device is secure, and a low score is not proof of compromise. Do not rely on it as your only safeguard.
+CampusShield does **not** intercept network traffic, scan process memory, use a kernel extension or
+system driver, or prevent compromise. Its signature set is small by design, its heuristics match
+specific patterns rather than unknown malware, and the folder watch runs in the user session, so the
+operating system does not let it stop a program from running. On iOS and in the Mac App Store build,
+the sandbox prevents scanning other apps' files entirely. A high score means the checked settings and
+files matched the current rules at the time of the check. It is not a guarantee that a device is
+secure, and a low score is not proof of compromise. Do not rely on it as your only safeguard.
 
 ## 2. Licence
 

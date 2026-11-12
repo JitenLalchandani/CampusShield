@@ -27,7 +27,7 @@ async function createStore({ mongoUri, dataDir }) {
 
 function createJsonStore(dir) {
   const file = path.join(dir, "store.json");
-  const state = { events: [], actions: [], audit: [], devices: [] };
+  const state = { events: [], actions: [], audit: [], devices: [], scans: [], quarantine: [] };
   let loading = null;
   let writes = Promise.resolve();
 
@@ -46,6 +46,8 @@ function createJsonStore(dir) {
           state.actions = Array.isArray(parsed.actions) ? parsed.actions : [];
           state.audit = Array.isArray(parsed.audit) ? parsed.audit : [];
           state.devices = Array.isArray(parsed.devices) ? parsed.devices : [];
+          state.scans = Array.isArray(parsed.scans) ? parsed.scans : [];
+          state.quarantine = Array.isArray(parsed.quarantine) ? parsed.quarantine : [];
         }
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
@@ -198,6 +200,85 @@ function createJsonStore(dir) {
       }
     },
 
+    scans: {
+      async all(limit = 50) {
+        await load();
+        return state.scans
+          .slice()
+          .sort((a, b) => Date.parse(b.startedAt || 0) - Date.parse(a.startedAt || 0))
+          .slice(0, limit)
+          .map(copy);
+      },
+      async get(id) {
+        await load();
+        return copy(state.scans.find(scan => scan.id === id) || null);
+      },
+      async upsert(record) {
+        await load();
+        const index = state.scans.findIndex(scan => scan.id === record.id);
+
+        if (index === -1) state.scans.push(copy(record));
+        else state.scans[index] = copy(record);
+
+        await persist();
+        return copy(record);
+      },
+      async remove(id) {
+        await load();
+        const index = state.scans.findIndex(scan => scan.id === id);
+        if (index === -1) return false;
+        state.scans.splice(index, 1);
+        await persist();
+        return true;
+      },
+      async clear() {
+        await load();
+        const deleted = state.scans.length;
+        state.scans = [];
+        await persist();
+        return deleted;
+      }
+    },
+
+    quarantine: {
+      async all() {
+        await load();
+        return state.quarantine
+          .slice()
+          .sort((a, b) => Date.parse(b.quarantinedAt || 0) - Date.parse(a.quarantinedAt || 0))
+          .map(copy);
+      },
+      async get(id) {
+        await load();
+        return copy(state.quarantine.find(item => item.id === id) || null);
+      },
+      async upsert(record) {
+        await load();
+        const index = state.quarantine.findIndex(item => item.id === record.id);
+
+        if (index === -1) state.quarantine.push(copy(record));
+        else state.quarantine[index] = copy(record);
+
+        await persist();
+        return copy(record);
+      },
+      async remove(id) {
+        await load();
+        const index = state.quarantine.findIndex(item => item.id === id);
+        if (index === -1) return false;
+        state.quarantine.splice(index, 1);
+        await persist();
+        return true;
+      },
+      async clear() {
+        await load();
+        const deleted = state.quarantine.length;
+        state.quarantine = [];
+        await persist();
+        return deleted;
+      }
+    },
+
     async close() {}
   };
 }
@@ -209,6 +290,8 @@ function createMongoStore(uri) {
   let actions;
   let audit;
   let devices;
+  let scans;
+  let quarantine;
 
   return {
     kind: "mongodb",
@@ -227,13 +310,19 @@ function createMongoStore(uri) {
       actions = db.collection("actions");
       audit = db.collection("audit");
       devices = db.collection("devices");
+      scans = db.collection("scans");
+      quarantine = db.collection("quarantine");
 
       await Promise.all([
         events.createIndex({ id: 1 }, { unique: true }),
         actions.createIndex({ eventId: 1 }, { unique: true }),
         audit.createIndex({ time: -1 }),
         devices.createIndex({ id: 1 }, { unique: true }),
-        devices.createIndex({ lastSeen: -1 })
+        devices.createIndex({ lastSeen: -1 }),
+        scans.createIndex({ id: 1 }, { unique: true }),
+        scans.createIndex({ startedAt: -1 }),
+        quarantine.createIndex({ id: 1 }, { unique: true }),
+        quarantine.createIndex({ quarantinedAt: -1 })
       ]);
     },
 
@@ -319,6 +408,56 @@ function createMongoStore(uri) {
       },
       async clear() {
         const result = await devices.deleteMany({});
+        return result.deletedCount;
+      }
+    },
+
+    scans: {
+      async all(limit = 50) {
+        return scans.find({}).sort({ startedAt: -1 }).limit(limit).toArray();
+      },
+      async get(id) {
+        return scans.findOne({ id });
+      },
+      async upsert(record) {
+        await scans.updateOne(
+          { id: record.id },
+          { $set: record },
+          { upsert: true }
+        );
+        return record;
+      },
+      async remove(id) {
+        const result = await scans.deleteOne({ id });
+        return result.deletedCount > 0;
+      },
+      async clear() {
+        const result = await scans.deleteMany({});
+        return result.deletedCount;
+      }
+    },
+
+    quarantine: {
+      async all() {
+        return quarantine.find({}).sort({ quarantinedAt: -1 }).toArray();
+      },
+      async get(id) {
+        return quarantine.findOne({ id });
+      },
+      async upsert(record) {
+        await quarantine.updateOne(
+          { id: record.id },
+          { $set: record },
+          { upsert: true }
+        );
+        return record;
+      },
+      async remove(id) {
+        const result = await quarantine.deleteOne({ id });
+        return result.deletedCount > 0;
+      },
+      async clear() {
+        const result = await quarantine.deleteMany({});
         return result.deletedCount;
       }
     },

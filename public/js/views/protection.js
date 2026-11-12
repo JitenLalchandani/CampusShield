@@ -41,8 +41,14 @@ const CHECK_STATE = {
 const CHECK_ORDER = { fail: 0, warn: 0, unknown: 1, pass: 2, info: 3 };
 
 let checking = false;
+let pollTimer = null;
 
 export async function render(root) {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+
   root.innerHTML = `
     <div class="loading-state">
       <span class="spinner" aria-hidden="true"></span>
@@ -61,6 +67,26 @@ export async function render(root) {
   const checked = Array.isArray(host?.checks) ? host.checks : [];
   const attention = checked.filter(check => check.status === "fail" || check.status === "warn");
   const tone = scoreTone(score);
+
+  const scanner = protection.scanner || {};
+  const scans = Array.isArray(protection.scans) ? protection.scans : [];
+  const quarantine = Array.isArray(protection.quarantine) ? protection.quarantine : [];
+  const openByPath = new Map();
+
+  for (const scan of scans) {
+    for (const threat of scan.threats || []) {
+      if (threat.status === "detected" && !openByPath.has(threat.filePath)) {
+        openByPath.set(threat.filePath, { ...threat, scanId: scan.id });
+      }
+    }
+  }
+
+  const openThreats = [...openByPath.values()];
+  const lastScan = scans.find(scan => scan.scope !== "realtime") || null;
+  const lastScanOpen = lastScan
+    ? (lastScan.threats || []).filter(threat => threat.status === "detected").length
+    : 0;
+  const activeScan = scanner.active || null;
 
   root.innerHTML = `
     <section class="card score-hero" data-tone="${tone}">
@@ -94,7 +120,7 @@ export async function render(root) {
         </div>
         <p class="helper">
           ${protection.auditAvailable
-            ? `Read-only checks run on the server host (${esc(protection.platformLabel)}). No setting is changed and no malware scan is performed.`
+            ? `Read-only checks run on the server host (${esc(protection.platformLabel)}). No setting is changed. File scanning is a separate, read-only pass you start below.`
             : `Checks are implemented for macOS hosts. This host reports ${esc(protection.platformLabel)}, so link devices from the app instead.`}
           Rules ${esc(protection.rulesVersion)}.
         </p>
@@ -162,6 +188,80 @@ export async function render(root) {
             actionAttrs: 'data-action="device-check"'
           })}</div>`}
     </section>
+
+    <section class="card protect-section scan-section" id="scanSection">
+      <div class="card-head">
+        <div>
+          <h2>Malware scan</h2>
+          <p>${lastScan
+            ? `Last ${lastScan.scope} scan ${esc(relativeTime(lastScan.finishedAt || lastScan.startedAt))} · ${num(lastScan.filesScanned)} files · ${num(lastScanOpen)} open threat${lastScanOpen === 1 ? "" : "s"}`
+            : "Signature and heuristic checks on files on this computer"}</p>
+        </div>
+        <span class="chip">${icon("scan")} ${num(scanner.signatureCount || 0)} signature${scanner.signatureCount === 1 ? "" : "s"}</span>
+      </div>
+
+      <div class="form-row">
+        <button class="btn primary" type="button" data-scan="quick" ${activeScan ? "disabled" : ""}>${icon("scan")} Quick scan</button>
+        <button class="btn ghost" type="button" data-scan="full" ${activeScan ? "disabled" : ""}>Full scan</button>
+        <button class="btn ghost" type="button" id="cancelScan" data-scan-id="${activeScan ? esc(activeScan.id) : ""}" ${activeScan ? "" : "hidden"}>Cancel scan</button>
+      </div>
+
+      <div class="scan-progress" id="scanProgress" ${activeScan ? "" : "hidden"}>
+        <div class="scan-bar"><span id="scanBarFill"></span></div>
+        <p class="helper" id="scanProgressText">Preparing the scan…</p>
+      </div>
+
+      ${openThreats.length
+        ? `<div class="threat-head">
+             <strong>${num(openThreats.length)} threat${openThreats.length === 1 ? "" : "s"} need a decision</strong>
+             <span>Quarantine moves the file into the app vault. Nothing is deleted until you say so.</span>
+           </div>
+           <div class="threat-list">${openThreats.slice(0, 25).map(threatRow).join("")}</div>
+           ${openThreats.length > 25 ? `<p class="helper">Showing 25 of ${num(openThreats.length)}. Quarantine or delete these to see the rest.</p>` : ""}`
+        : lastScan
+          ? `<div class="scan-clear">${icon("check")} <span>No open threats. ${lastScan.truncated ? `The last scan stopped early (${esc(lastScan.stopReason || "limit reached")}) — run a full scan when you have time.` : "The last scan found nothing that needs action."}</span></div>`
+          : emptyState({
+              iconName: "shield",
+              title: "No scan has run yet",
+              body: "A quick scan checks Downloads, Desktop, Documents, and launch agents. A full scan adds your whole home folder and system app folders.",
+              actionLabel: "Run a quick scan",
+              actionAttrs: 'data-action="scan-quick"'
+            })}
+
+      <div class="watch-row">
+        <div class="watch-copy">
+          <strong>Real-time folder watch</strong>
+          <span>${scanner.watch?.enabled
+            ? `Watching ${num(scanner.watch.roots?.length || 0)} folders since ${esc(relativeTime(scanner.watch.startedAt))} · ${num(scanner.watch.alerts || 0)} alerts`
+            : "Flags new files as they land in your quick-scan folders"}</span>
+        </div>
+        <button class="btn subtle" type="button" id="watchToggle" ${scanner.watchSupported ? "" : "disabled"}>
+          ${scanner.watch?.enabled ? "Stop watching" : "Start watching"}
+        </button>
+      </div>
+      <p class="helper">
+        ${scanner.watchSupported
+          ? "The watch works in your user session: it sees files as they appear and scans them, but the operating system does not let a user-space app block execution. Kernel-level blocking needs an Apple Endpoint Security entitlement or a signed Windows driver, which this build does not ship."
+          : "Folder watching is not available on this platform build."}
+        Signatures: ${esc(scanner.signatureVersion || "unknown")}. ${esc(scanner.signatureNote || "")}
+        ${scanner.signatureWarnings?.length ? ` ${esc(scanner.signatureWarnings.join(" "))}` : ""}
+      </p>
+    </section>
+
+    ${quarantine.length
+      ? `<section class="card protect-section">
+          <div class="card-head">
+            <div>
+              <h2>Quarantine</h2>
+              <p>Files held in the app vault. They are not on your normal folders.</p>
+            </div>
+            <span class="chip">${num(quarantine.length)} held</span>
+          </div>
+          <div class="quarantine-list">
+            ${quarantine.map(quarantineRow).join("")}
+          </div>
+        </section>`
+      : ""}
 
     <section class="card protect-section">
       <div class="card-head">
@@ -267,20 +367,139 @@ export async function render(root) {
         </div>
         <ul class="checklist">
           <li>${icon("check")}<span>Every check starts at 100. A critical finding costs 30 points, high 18, medium 10, low 4. Info and unverified checks cost nothing.</span></li>
+          <li>${icon("check")}<span>Open malware findings cost the same amounts, capped at 45 points per device. Quarantining or deleting a file removes its penalty.</span></li>
           <li>${icon("check")}<span>95+ is Protected, 80+ Good, 60+ Needs attention, below 60 At risk.</span></li>
           <li>${icon("check")}<span>The shared score is the average of checked devices. Linked devices count only after their own check runs.</span></li>
-          <li>${icon("info")}<span>This build reports posture and privacy risks. It does not scan for malware, block traffic, or replace a system antivirus.</span></li>
+          <li>${icon("info")}<span>Scanning compares files against the loaded signature set and local heuristics. It does not block traffic, inspect running memory, or replace a system antivirus.</span></li>
         </ul>
       </article>
     </section>
   `;
 
   bind(root);
+
+  if (activeScan) pollScan(root, activeScan.id);
 }
 
 function bind(root) {
   root.querySelectorAll("#checkDevice, [data-action='device-check']").forEach(button => {
     button.addEventListener("click", () => runDeviceCheck(root));
+  });
+
+  root.querySelectorAll("[data-scan]").forEach(button => {
+    button.addEventListener("click", () => startScan(root, button.dataset.scan));
+  });
+
+  root.querySelectorAll("[data-action='scan-quick']").forEach(button => {
+    button.addEventListener("click", () => startScan(root, "quick"));
+  });
+
+  root.querySelector("#cancelScan")?.addEventListener("click", async event => {
+    const button = event.currentTarget;
+    const scanId = button.dataset.scanId;
+
+    if (!scanId) return;
+
+    button.disabled = true;
+
+    try {
+      await api(`/api/scans/${encodeURIComponent(scanId)}/cancel`, { method: "POST" });
+      toast("Scan cancelled.", { type: "info" });
+    } catch (error) {
+      toast(error.message, { type: "error" });
+      button.disabled = false;
+    }
+  });
+
+  root.querySelectorAll("[data-quarantine]").forEach(button => {
+    button.addEventListener("click", async () => {
+      const [scanId, threatId] = String(button.dataset.quarantine).split(":");
+      button.disabled = true;
+
+      try {
+        await api(
+          `/api/threats/${encodeURIComponent(scanId)}/${encodeURIComponent(threatId)}/quarantine`,
+          { method: "POST" }
+        );
+        toast("File moved to quarantine.", { type: "success" });
+        await render(root);
+      } catch (error) {
+        toast(error.message, { type: "error" });
+        button.disabled = false;
+      }
+    });
+  });
+
+  root.querySelectorAll("[data-delete-threat]").forEach(button => {
+    button.addEventListener("click", async () => {
+      if (!window.confirm("Delete this file permanently? This cannot be undone.")) return;
+
+      const [scanId, threatId] = String(button.dataset.deleteThreat).split(":");
+      button.disabled = true;
+
+      try {
+        await api(
+          `/api/threats/${encodeURIComponent(scanId)}/${encodeURIComponent(threatId)}`,
+          { method: "DELETE" }
+        );
+        toast("File deleted.", { type: "success" });
+        await render(root);
+      } catch (error) {
+        toast(error.message, { type: "error" });
+        button.disabled = false;
+      }
+    });
+  });
+
+  root.querySelectorAll("[data-restore-q]").forEach(button => {
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+
+      try {
+        await api(`/api/quarantine/${encodeURIComponent(button.dataset.restoreQ)}/restore`, { method: "POST" });
+        toast("File restored to its original folder.", { type: "success" });
+        await render(root);
+      } catch (error) {
+        toast(error.message, { type: "error" });
+        button.disabled = false;
+      }
+    });
+  });
+
+  root.querySelectorAll("[data-delete-q]").forEach(button => {
+    button.addEventListener("click", async () => {
+      if (!window.confirm("Delete this quarantined file permanently?")) return;
+
+      button.disabled = true;
+
+      try {
+        await api(`/api/quarantine/${encodeURIComponent(button.dataset.deleteQ)}`, { method: "DELETE" });
+        toast("Quarantined file deleted.", { type: "success" });
+        await render(root);
+      } catch (error) {
+        toast(error.message, { type: "error" });
+        button.disabled = false;
+      }
+    });
+  });
+
+  root.querySelector("#watchToggle")?.addEventListener("click", async event => {
+    const button = event.currentTarget;
+    const enabled = !/stop/i.test(button.textContent);
+
+    button.disabled = true;
+
+    try {
+      await api("/api/scanner/watch", { method: "POST", body: { enabled } });
+      toast(
+        enabled ? "Real-time watch started for your quick-scan folders." : "Real-time watch stopped.",
+        { type: "success" }
+      );
+      await render(root);
+    } catch (error) {
+      toast(error.message, { type: "error" });
+      button.disabled = false;
+    }
   });
 
   const linkForm = root.querySelector("#linkForm");
@@ -423,6 +642,160 @@ async function runDeviceCheck(root) {
   } finally {
     checking = false;
   }
+}
+
+async function startScan(root, scope) {
+  const buttons = [...root.querySelectorAll("[data-scan]")];
+  if (buttons.every(button => button.disabled)) return;
+
+  buttons.forEach(button => {
+    button.disabled = true;
+  });
+
+  const progress = root.querySelector("#scanProgress");
+  const progressText = root.querySelector("#scanProgressText");
+  const fill = root.querySelector("#scanBarFill");
+
+  if (progress) progress.hidden = false;
+  if (progressText) progressText.textContent = "Collecting folders and starting the scan…";
+  if (fill) fill.style.width = "4%";
+
+  try {
+    const result = await api("/api/scans", {
+      method: "POST",
+      body: { scope: scope === "full" ? "full" : "quick" }
+    });
+
+    toast(
+      `${scope === "full" ? "Full" : "Quick"} scan started. It runs in the background — you can keep using the app.`,
+      { type: "info" }
+    );
+
+    const cancel = root.querySelector("#cancelScan");
+
+    if (cancel && result.scan?.id) {
+      cancel.hidden = false;
+      cancel.disabled = false;
+      cancel.dataset.scanId = result.scan.id;
+    }
+
+    pollScan(root, result.scan?.id);
+  } catch (error) {
+    toast(error.message, { type: "error" });
+    buttons.forEach(button => {
+      button.disabled = false;
+    });
+    if (progress) progress.hidden = true;
+  }
+}
+
+function pollScan(root, scanId) {
+  if (!scanId) return;
+
+  if (pollTimer) clearInterval(pollTimer);
+
+  const tick = async () => {
+    if (!root.isConnected) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+      return;
+    }
+
+    try {
+      const { scan } = await api(`/api/scans/${encodeURIComponent(scanId)}`);
+
+      if (scan.status === "running") {
+        const count = Number(scan.filesScanned || 0);
+        const found = Number(scan.threatCount || 0);
+        const text = root.querySelector("#scanProgressText");
+        const fill = root.querySelector("#scanBarFill");
+
+        if (text) {
+          text.textContent =
+            `Scanning… ${num(count)} files checked` +
+            `${found ? ` · ${num(found)} threat${found === 1 ? "" : "s"}` : ""}` +
+            `${scan.currentDirectory ? ` · ${scan.currentDirectory}` : ""}`;
+        }
+        if (fill) fill.style.width = `${Math.min(92, 6 + Math.log10(count + 1) * 24)}%`;
+        return;
+      }
+
+      clearInterval(pollTimer);
+      pollTimer = null;
+
+      const threats = Number(scan.threats?.length || 0);
+      const cancelled = scan.status === "cancelled";
+      const failed = scan.status === "failed";
+
+      toast(
+        failed
+          ? `Scan failed: ${scan.error || "unknown error"}`
+          : `${scan.scope === "full" ? "Full" : "Quick"} scan ${cancelled ? "cancelled" : "finished"}: ` +
+            `${num(scan.filesScanned)} files, ${num(threats)} threat${threats === 1 ? "" : "s"}.`,
+        { type: failed ? "error" : threats ? "info" : "success", timeout: 6000 }
+      );
+
+      if (root.isConnected) await render(root);
+    } catch (error) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+      toast(error.message, { type: "error" });
+    }
+  };
+
+  pollTimer = setInterval(tick, 900);
+  tick();
+}
+
+function severityTone(severity) {
+  if (severity === "critical" || severity === "high") return "high";
+  if (severity === "medium") return "medium";
+  return "low";
+}
+
+function threatRow(threat) {
+  const reasons = Array.isArray(threat.reasons) ? threat.reasons : [];
+  const primary = reasons[0];
+  const key = `${threat.scanId}:${threat.id}`;
+
+  return `
+    <article class="threat-item">
+      <div class="threat-main">
+        <div class="threat-title">
+          <strong>${esc(threat.name)}</strong>
+          <span class="sev ${severityTone(threat.severity)}">${esc(String(threat.severity || "low").toUpperCase())}</span>
+        </div>
+        <span class="threat-path">${esc(threat.filePath)}</span>
+        <span class="threat-reason">
+          ${esc(primary?.title || "Suspicious file")}
+          ${reasons.length > 1 ? ` · ${num(reasons.length - 1)} more signal${reasons.length - 1 === 1 ? "" : "s"}` : ""}
+        </span>
+      </div>
+      <div class="threat-actions">
+        <button class="btn subtle" type="button" data-quarantine="${esc(key)}">Quarantine</button>
+        <button class="link danger-link" type="button" data-delete-threat="${esc(key)}">Delete</button>
+      </div>
+    </article>
+  `;
+}
+
+function quarantineRow(entry) {
+  return `
+    <article class="threat-item">
+      <div class="threat-main">
+        <div class="threat-title">
+          <strong>${esc(entry.name)}</strong>
+          <span class="sev ${severityTone(entry.severity)}">${esc(String(entry.severity || "low").toUpperCase())}</span>
+        </div>
+        <span class="threat-path">${esc(entry.originalPath)}</span>
+        <span class="threat-reason">Held ${esc(relativeTime(entry.quarantinedAt))} · ${esc(entry.sha256?.slice(0, 16) || "no hash")}…</span>
+      </div>
+      <div class="threat-actions">
+        <button class="btn subtle" type="button" data-restore-q="${esc(entry.id)}">Restore</button>
+        <button class="link danger-link" type="button" data-delete-q="${esc(entry.id)}">Delete</button>
+      </div>
+    </article>
+  `;
 }
 
 function ringLength(score) {

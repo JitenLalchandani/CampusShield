@@ -74,6 +74,10 @@ button {
   font: inherit;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 svg {
   display: block;
 }
@@ -2496,5 +2500,172 @@ svg {
 @media (max-width: 520px) {
   .tool-form .btn {
     flex: 1 1 100%;
+  }
+}
+
+/* Malware scan */
+
+.scan-section .form-row {
+  margin-top: 2px;
+}
+
+.scan-progress {
+  margin: 14px 0 2px;
+}
+
+.scan-bar {
+  height: 7px;
+  border-radius: 99px;
+  background: #14243d;
+  border: 1px solid var(--line-soft);
+  overflow: hidden;
+}
+
+.scan-bar span {
+  display: block;
+  width: 4%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--cyan), var(--green));
+  transition: width 0.5s ease;
+}
+
+.scan-progress .helper {
+  margin: 8px 0 0;
+}
+
+.threat-head {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 16px 0 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 93, 115, 0.3);
+  background: rgba(255, 93, 115, 0.07);
+}
+
+.threat-head strong {
+  color: #ffaebb;
+  font-size: 13.5px;
+}
+
+.threat-head span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.threat-list,
+.quarantine-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.threat-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line-soft);
+  background: var(--panel-2);
+}
+
+.threat-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.threat-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.threat-title strong {
+  font-size: 13.5px;
+}
+
+.threat-path,
+.threat-reason {
+  color: var(--faint);
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+
+.threat-reason {
+  color: var(--muted);
+}
+
+.threat-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+}
+
+.threat-actions .danger-link {
+  margin-left: 0;
+}
+
+.scan-clear {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(53, 211, 154, 0.28);
+  background: rgba(53, 211, 154, 0.07);
+  color: #a8f0d3;
+  font-size: 13px;
+}
+
+.scan-clear svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.watch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.watch-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.watch-copy strong {
+  font-size: 13.5px;
+}
+
+.watch-copy span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .threat-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .threat-actions {
+    width: 100%;
+    justify-content: flex-end;
   }
 }

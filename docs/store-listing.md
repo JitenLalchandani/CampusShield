@@ -3,9 +3,11 @@
 Ready-to-paste listing text and questionnaire answers for the Apple App Store, Mac App Store, Google
 Play, and Microsoft Store. Replace **[bracketed]** values before submitting.
 
-> **Positioning rule:** CampusShield is a *device posture checker and privacy toolbox*, never an
-> antivirus or malware scanner. Every store has policies against misleading security claims, and the
-> app itself states this limit. Keep the listing consistent with the app.
+> **Positioning rule:** CampusShield is a *device posture checker, file scanner, and privacy toolbox*.
+> The desktop build scans files with a small local signature set and heuristics; the iOS, Android, and
+> Mac App Store builds cannot scan files because their sandboxes forbid it. Every store has policies
+> against misleading security claims, so each listing below states exactly what that build does. Keep
+> the listing consistent with the app.
 
 ## Shared basics
 
@@ -63,8 +65,8 @@ Connect your own CampusShield server to review alerts, record decisions, and kee
 PRIVATE BY DEFAULT
 No account, no ads, no analytics, no tracking. Results stay on your device or on the server you choose.
 
-WHAT CAMPUSSHIELD IS NOT
-It is not an antivirus. It does not scan files, block malware, filter traffic, or run continuously. A high score reflects the settings checked at that moment, not a guarantee that a device is secure.
+WHAT THIS IPHONE APP DOES NOT DO
+iOS does not allow one app to inspect other apps' files, so this build does not scan files or remove malware. The desktop CampusShield app does scan files with a local signature set and heuristics; install it there if you need scanning. A high score reflects the settings checked at that moment, not a guarantee that a device is secure.
 
 Terms and privacy: [https://your-domain.example/terms]
 ```
@@ -106,9 +108,10 @@ it does **not** use non-exempt encryption and does not require a CCATS/ERN.
 
 **Subtitle (30 characters):** `Cross-device safety score`
 
-A sandboxed Mac App Store build cannot run `fdesetup`, `spctl`, `csrutil`, `softwareupdate`, or read
-`~/Downloads`, so it cannot produce a host score. Use the copy below **only** for a sandboxed build that
-disables device checks. Do not submit the current unsandboxed DMG as-is; it will be rejected.
+A sandboxed Mac App Store build cannot run `fdesetup`, `spctl`, `csrutil`, `softwareupdate`, read
+`~/Downloads`, or scan files outside its own container, so it cannot produce a host score or a file
+scan. Use the copy below **only** for a sandboxed build that disables device checks and scanning. Do
+not submit the current unsandboxed DMG as-is; it will be rejected.
 
 **Description (Mac App Store, sandboxed build):**
 ```
@@ -123,9 +126,12 @@ CampusShield keeps one shared safety score across the computers, phones, tablets
 
 All checks run on your Mac. No account, no ads, no analytics, no tracking. Results stay on your device or on the server you choose.
 
-This sandboxed App Store build cannot read system security settings, so device checks show "Not available in this build". The full read-only device audit is available in the direct-download version of CampusShield for macOS.
+This sandboxed App Store build cannot read system security settings or scan files, so device checks
+and malware scans show "Not available in this build". The full read-only device audit and file scanner
+are available in the direct-download version of CampusShield for macOS.
 
-CampusShield is not an antivirus. It does not scan files, block malware, filter traffic, or run continuously.
+CampusShield is not a full antivirus. It does not filter traffic, scan process memory, or block
+execution with a kernel extension.
 ```
 
 For the **direct-download Mac app** (not a store listing), use the Google Play feature list below and add
@@ -134,6 +140,12 @@ this section near the top:
 ```
 READ-ONLY DEVICE CHECKS
 FileVault, firewall, Gatekeeper, System Integrity Protection, screen lock, guest account, automatic updates, pending updates, recent installers, and background login items. Every finding includes the reason and the fix. No administrator rights, no drivers, no background monitoring.
+
+MALWARE SCAN AND QUARANTINE
+Scan Downloads, Desktop, Documents, and launch agents (quick), or your whole home folder plus app and launch folders (full). Matches SHA-256 signatures, double extensions, hidden executables, content/extension mismatches, and script patterns such as download-and-execute, encoded PowerShell, reverse shells, and security-tampering commands. Quarantine, restore, or permanently delete each finding. Quarantined and deleted files stop counting against the score.
+
+REAL-TIME FOLDER WATCH
+Optional user-space watch scans new files as they land in your quick-scan folders. It reports and can quarantine; macOS does not let a user-space app block execution without an Endpoint Security entitlement.
 ```
 
 **Mac screenshots:** 1280 × 800, 1440 × 900, 2560 × 1600, or 2880 × 1800 (16:10).
@@ -164,11 +176,11 @@ BREACHED-PASSWORD CHECK
 See whether a password appears in a public breach corpus. Only the first five characters of a SHA-1 hash are sent, using k-anonymity; the password and full hash stay on your device.
 
 CROSS-DEVICE SCORE
-Run CampusShield's read-only device checks on a Mac (desktop app) and link this phone to see one combined score. Android sandboxing prevents an app from scanning the device in this release, so this app links into the score and does not report a phone score of its own.
+Run CampusShield's read-only device checks or a file scan on a Mac or Windows computer (desktop app) and link this phone to see one combined score. Android sandboxing prevents this app from scanning the phone's own files in this release, so the Android app links into the score and does not report a phone score of its own.
 
 Start the CampusShield server on a computer you control and enter its URL in Settings to use the queue. Results stay on your device or on the server you choose.
 
-CampusShield is not an antivirus. It does not scan files, block malware, filter traffic, or run in the background. A high score reflects the settings checked at that moment, not a guarantee.
+CampusShield is not a full antivirus. The desktop app scans files with a small local signature set and heuristics; it does not filter traffic, scan process memory, or block execution with a kernel driver. A high score reflects the settings checked at that moment, not a guarantee.
 ```
 
 **Data safety:**
@@ -212,11 +224,15 @@ Also included:
 • A breached-password check that never sends your password
 • An optional campus threat queue with an audit trail, connected to your own server
 
-The read-only device audit runs in the macOS desktop app, which can check disk encryption, firewall, app verification, system integrity, screen lock, guest account, updates, recent installers, and background login items. Windows and mobile builds link into the shared score; they do not report a device score of their own in this release.
+The read-only device audit runs in the macOS desktop app, which can check disk encryption, firewall, app verification, system integrity, screen lock, guest account, updates, recent installers, and background login items.
+
+The desktop app also scans files on macOS and Windows: SHA-256 signature matching plus heuristics for disguised file types, hidden executables, content mismatches, and risky script patterns. Findings can be quarantined, restored, or deleted, and an optional user-space folder watch scans new files as they arrive. Mobile builds link into the shared score; they do not scan their own device in this release.
+
+The Windows build scans files and links into the shared score. Windows posture checks (BitLocker, Defender, firewall, update state) are not implemented yet.
 
 No account. No ads. No analytics. Data stays on your device.
 
-CampusShield is a posture checker, not an antivirus. It does not scan files, block malware, or run in the background.
+CampusShield is not a full antivirus. Its signature set is small and updated only from a feed you supply, its real-time watch cannot block execution without a signed driver, and it does not filter traffic or scan process memory.
 ```
 
 **System requirements:** Windows 10 1809 or later, x64/ARM64 (NSIS installer) or MSIX for the Store.
@@ -224,8 +240,8 @@ CampusShield is a posture checker, not an antivirus. It does not scan files, blo
 **Store package:** Partner Center requires an MSIX/APPX (or a packaged EXE with a Store association).
 Store identity values (`identityName`, `publisher`, `publisherDisplayName`, `applicationId`) come from
 Partner Center and must be added to the `build.appx` block in `package.json`. A full-trust packaged
-desktop app may run the local server, but the Windows device audit is not implemented yet, so Windows
-users currently get the linked-device score and the privacy tools.
+desktop app may run the local server and scan files; the Windows posture audit is not implemented yet,
+so Windows users get the linked-device score, the file scanner, and the privacy tools.
 
 ## Screenshot storyboard
 
@@ -233,9 +249,10 @@ Capture these states from a real running build (no invented data):
 
 1. **Protection home** — a checked device with a Good score and two findings.
 2. **Why the score changed** — findings list showing a passed and a failed check with fixes.
-3. **Devices** — one checked computer, one phone marked "Not checked".
-4. **Link inspector** — a high-risk lookalike domain result.
-5. **Password check** — a breached result showing a count and the k-anonymity note.
-6. **Activity** — device checks and analyst decisions in one timeline.
+3. **Malware scan** — a completed quick scan with one quarantined finding and the score penalty visible.
+4. **Devices** — one checked computer, one phone marked "Not checked".
+5. **Link inspector** — a high-risk lookalike domain result.
+6. **Password check** — a breached result showing a count and the k-anonymity note.
+7. **Activity** — device checks, scans, and analyst decisions in one timeline.
 
 Add device frames only if the store allows them; keep text legible at thumbnail size.

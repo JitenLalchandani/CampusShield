@@ -47,6 +47,15 @@ export async function render(root) {
       actionAttr: 'data-action="device-check"' 
     },
     {
+      iconName: "shield",
+      name: "File scanner",
+      state: health.fileScanner ? "Available" : "Unavailable",
+      stateClass: health.fileScanner ? "on" : "",
+      description: health.fileScanner
+        ? `Scans files on this computer against ${health.fileScanner.signatureCount} local signature${health.fileScanner.signatureCount === 1 ? "" : "s"} plus naming, type-mismatch, and script heuristics. Engine ${health.fileScanner.engineVersion}; user-space folder watch ${health.fileScanner.watchSupported ? "available" : "unavailable"}.`
+        : "The file scanner is not available on this host."
+    },
+    {
       iconName: "key",
       name: "Identity provider",
       state: "Not connected",
@@ -90,16 +99,16 @@ export async function render(root) {
       <dl class="kv">
         <dt>API</dt><dd>Online · v${esc(health.version)}</dd>
         <dt>Storage</dt><dd>${esc(health.storage)}</dd>
-        <dt>Server host</dt><dd>${esc(health.platform)}${scanner ? " · log scanner available" : ""}${deviceChecks ? " · device checks available" : ""}</dd>
+        <dt>Server host</dt><dd>${esc(health.platform)}${scanner ? " · log scanner available" : ""}${deviceChecks ? " · device checks available" : ""}${health.fileScanner ? " · file scanner available" : ""}</dd>
         <dt>Data source</dt><dd>${esc(summary.dataSource)}</dd>
         <dt>Events held</dt><dd>${esc(summary.eventsTotal)} · audit entries: ${esc(summary.auditTotal)}</dd>
         <dt>Devices</dt><dd>${esc(devicesLinked)} linked · score ${esc(summary.protection?.average ?? "not checked")}</dd>
       </dl>
       <p class="helper">
-        The macOS log scanner and read-only device posture checks are the only
-        collectors implemented today. The cards below are the integrations a
-        production deployment would need before the coverage numbers are
-        meaningful.
+        The file scanner, macOS log scanner, and read-only device posture checks
+        are the only collectors implemented today. The cards below are the
+        integrations a production deployment would need before the coverage
+        numbers are meaningful.
       </p>
     </section>
 

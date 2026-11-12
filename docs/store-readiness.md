@@ -88,10 +88,10 @@ Test through TestFlight before submitting.
 
 | Guideline | Risk | Mitigation |
 | --- | --- | --- |
-| 2.5.1 — no scanning other apps/files | Reviewer may think the app scans the device | iOS build only reads the user's own server and runs offline tools; review notes say so explicitly |
+| 2.5.1 — no scanning other apps/files | Reviewer may think the iOS app scans the device | The iOS build ships without the file scanner and only reads the user's own server; review notes say so explicitly |
 | 4.2 — minimum functionality | Native shell around a website can be rejected | App works offline (link/password tools), stores settings locally, and explains cross-device value; be ready to add native device signals after launch |
 | 2.3.1 — hidden features | The threat queue is demo-only and empty by default | Empty states explain that a server URL is required; no hidden modes |
-| 2.3.7 — accurate metadata | "Antivirus" or "protects your phone" wording | Listing states it is a posture checker, not an antivirus |
+| 2.3.7 — accurate metadata | "Antivirus" or "protects your phone" wording | Listing states the desktop build scans files with a small local signature set and that mobile builds cannot scan; the app repeats the limit |
 | 5.1.1 — purpose strings | Local Network prompt | String names the exact purpose (connect to your CampusShield server) |
 | 4.7 / 5.2 — third-party services | Pwned Passwords dependency | Disclosed in the privacy policy; no account data sent |
 
@@ -133,8 +133,9 @@ Electron needs `com.apple.security.cs.allow-jit` and
 **Option B — Mac App Store companion build.** Ship a sandboxed build with entitlements
 `com.apple.security.app-sandbox` and `com.apple.security.network.client`, no host audit, and clear
 in-app copy such as "Device checks are available in CampusShield for macOS (direct download)." This
-requires a build flag to disable `/api/protection/scan`; it is **not implemented yet** and must be done
-before submitting to the Mac App Store.
+requires a build flag to disable `/api/protection/scan` and `/api/scans`; it is **not implemented yet**
+and must be done before submitting to the Mac App Store. The sandbox also prevents scanning files
+outside the app container, so the scanner must be disabled in that build, not merely hidden.
 
 Do not submit the unsandboxed build and hope for the best; App Review tests sandbox entitlements.
 
@@ -192,8 +193,8 @@ re-check before every submission). `minSdkVersion` is 24.
 
 | Policy | Risk | Mitigation |
 | --- | --- | --- |
-| Misrepresentation / deceptive claims | Listing implies antivirus protection | Copy says posture checker; app repeats the limit |
-| Device and Network Abuse | App might appear to scan other people's devices | It reads only the host running its own server, with the operator's consent; no remote device access |
+| Misrepresentation / deceptive claims | Listing implies full antivirus protection | Copy says desktop scanning uses a small local signature set and a user-space watch; mobile builds cannot scan; app repeats the limit |
+| Device and Network Abuse | File scanning might appear to inspect other people's devices | Scanning reads only the host running its own server, with the operator's consent; the watch covers that host's own user folders; no remote device access |
 | User Data | Data sent to a self-hosted server | Disclose in privacy policy and data safety; no developer collection |
 | Stalkerware | "Monitor devices" framing | Never market it as monitoring someone else; the queue is analyst triage of approved events |
 
@@ -286,7 +287,7 @@ Copy this into the release issue and tick every line.
 - [ ] Icon has no alpha (verify with `sips -g hasAlpha`).
 - [ ] Archive uploaded; TestFlight smoke test passed.
 - [ ] App Privacy = Data Not Collected; export compliance answered.
-- [ ] Review notes include the "not an antivirus / no device scanning" explanation.
+- [ ] Review notes explain that the iOS/Android builds do not scan device files, and that the desktop scanner is a small local signature set plus heuristics, not a full antivirus.
 - [ ] EU trader status completed.
 
 **Google**

@@ -147,9 +147,9 @@ export async function render(root) {
             </button>
           </div>
           <p class="warning-note">
-            Clearing deletes events, decisions, linked devices, and audit
-            history from the configured store. In MongoDB Atlas this affects the
-            connected database.
+            Clearing deletes events, decisions, linked devices, scan history,
+            quarantined files, and audit history from the configured store. In
+            MongoDB Atlas this affects the connected database.
           </p>
         </section>
 
@@ -165,7 +165,7 @@ export async function render(root) {
             <li>${icon("info")}<span>Detection is rule-based and illustrative, not a validated engine.</span></li>
             <li>${icon("info")}<span>There is no authentication or role-based access in this build.</span></li>
             <li>${icon("info")}<span>Containment records a decision only; it does not change any real system.</span></li>
-            <li>${icon("info")}<span>Device checks are read-only. CampusShield does not scan for malware or block traffic.</span></li>
+            <li>${icon("info")}<span>Device checks are read-only. The file scanner uses a small local signature set plus heuristics and cannot block execution; see Protection for what it found.</span></li>
           </ul>
         </section>
       </div>

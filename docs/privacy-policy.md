@@ -17,8 +17,9 @@ where that information goes, and how to delete it.
 ## 1. Short version
 
 - CampusShield has **no accounts, no ads, no analytics, and no developer-operated telemetry**.
-- Device checks are **read-only**. We never read your files, keystrokes, browsing history, screen,
-  camera, microphone, contacts, photos, or location.
+- Device checks are **read-only**. The offline file scanner reads file names, a small file header, and
+  a SHA-256 hash on your own machine; it never uploads file contents. We never read keystrokes,
+  browsing history, screen, camera, microphone, contacts, photos, or location.
 - Results are stored **on your device or on the server you choose**. The developer does not receive them.
 - Two features use the network: the optional breached-password check (five characters of a SHA-1 hash)
   and the connection to your own CampusShield server. The link inspector never opens or fetches the link.
@@ -52,14 +53,33 @@ Full findings, including the plain-language recommendation for each item, are st
 reproducible. The check does not read file contents, does not require administrator rights, does not
 install a driver or kernel extension, and does not monitor activity in the background.
 
-### 3.2 Linked devices (created when you add a device)
+### 3.2 File scan results (created only when you run a scan or enable the watch)
+
+The desktop build can scan files for known hashes and suspicious patterns. Scanning happens on the
+machine running the server; file contents are never uploaded. The following is stored in the
+configured data store:
+
+| Item | Example | Why |
+| --- | --- | --- |
+| File path and name | `/Users/me/Downloads/invoice.pdf.exe` | Show the finding and support quarantine |
+| File size and SHA-256 hash | `…`, `275a021b…` | Match signatures and identify the file |
+| Severity and matched reasons | `high`, "Disguised file type" | Explain why the file was flagged |
+| Scan scope, counters, timestamps | `quick`, 12 431 files, ISO date | Show progress and history |
+| Quarantine record | original path, stored file name | Restore a file you choose to release |
+
+A quarantined file is moved to `<dataDir>/quarantine` on the same machine with owner-only permissions.
+Turning on the real-time folder watch only expands *when* those quick-scan folders are inspected; it
+does not add a new destination for data. Files are **not** transmitted to the developer, and no
+reputation lookup leaves the device.
+
+### 3.3 Linked devices (created when you add a device)
 
 The name you type, device kind (computer, phone, tablet, browser), platform, source, timestamps, role,
 and — once that device is actually checked — its score and grade. A linked device with no check shows
 "Not checked" and does not affect the average. Linking a device does not transmit anything from that
 device.
 
-### 3.3 Campus threat queue (operator feature)
+### 3.4 Campus threat queue (operator feature)
 
 If an operator ingests events into their own CampusShield server, those events and the analyst's
 actions are stored in that server's data store. An event may contain a group name, event type, source
@@ -67,18 +87,19 @@ label, count, detail text, severity, rule, recommendation, and arbitrary metadat
 ingesting system. **The operator decides what to ingest and must ensure it is authorized and lawful.**
 Do not submit special-category data, and avoid personal data that is not needed for triage.
 
-### 3.4 On-device settings
+### 3.5 On-device settings
 
 The web, desktop, and mobile apps keep two values in browser local storage: the API base URL you
 configure and your auto-refresh preference (on/off and interval). On the desktop app the server stores
 its data in the OS application-data directory
 (`~/Library/Application Support/CampusShield/data` on macOS).
 
-### 3.5 What we never collect
+### 3.6 What we never collect
 
-No files or file contents, keystrokes, clipboard, browsing history, screen recordings, screenshots,
-camera or microphone input, contacts, calendars, photos, precise location, advertising identifiers, or
-installed-app inventory beyond the login-item filenames listed above. No crash reports, usage
+No file contents, keystrokes, clipboard, browsing history, screen recordings, screenshots, camera or
+microphone input, contacts, calendars, photos, precise location, advertising identifiers, or
+installed-app inventory beyond the login-item filenames listed above are sent to us. The scanner reads
+a small header and a hash locally, but never transmits the file itself. No crash reports, usage
 analytics, or device fingerprints are sent to us.
 
 ## 4. Network connections
@@ -95,11 +116,12 @@ paste. Timestamps and device names are not attached to the password request.
 
 ## 5. macOS permissions
 
-- **Downloads folder:** macOS may ask for permission to list the Downloads folder during a check. If
-  you decline, that single finding shows "Unverified" and nothing is read.
+- **Downloads, Desktop, and Documents folders:** macOS may ask for permission to read these folders
+  during a device check, a file scan, or after you start the folder watch. If you decline, those
+  folders are skipped and the related finding shows "Unverified" or the scan reports fewer files.
 - CampusShield does **not** request Full Disk Access, Accessibility, Screen Recording, Input Monitoring,
-  or administrator/sudo rights. If a command is blocked or unavailable, the check reports "Unverified"
-  rather than guessing.
+  or administrator/sudo rights. If a command or folder is blocked or unavailable, the app reports
+  "Unverified" rather than guessing.
 - You can revoke Downloads access at any time in System Settings → Privacy & Security → Files and
   Folders.
 

@@ -1,0 +1,13 @@
+{
+  "version": "2026.11-test",
+  "note": "Built-in test signature only. Add a trusted feed with CAMPUSSHIELD_SIGNATURES.",
+  "entries": [
+    {
+      "sha256": "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f",
+      "name": "EICAR-Test-File",
+      "severity": "critical",
+      "kind": "test",
+      "note": "Industry-standard antivirus test file, not malware."
+    }
+  ]
+}
