@@ -1,0 +1,184 @@
+# CampusShield Privacy Policy
+
+**Effective date:** 13 November 2026
+**Last updated:** 13 November 2026
+
+CampusShield is published by **[YOUR LEGAL NAME OR COMPANY]** ("CampusShield", "we", "us").
+Contact: **[privacy@your-domain.example]** · **[your postal address]**
+
+This policy covers the CampusShield web app, progressive web app (PWA), macOS desktop app, iOS/iPadOS
+app, Android app, and the self-hosted CampusShield server. It explains exactly what the software reads,
+where that information goes, and how to delete it.
+
+> **Template notice:** replace the bracketed placeholders, have the final text reviewed for your
+> jurisdiction, and host it at a public HTTPS URL before submitting to any store. Apple, Google, and
+> Microsoft all require a reachable privacy-policy link on the store listing and inside the app.
+
+## 1. Short version
+
+- CampusShield has **no accounts, no ads, no analytics, and no developer-operated telemetry**.
+- Device checks are **read-only**. We never read your files, keystrokes, browsing history, screen,
+  camera, microphone, contacts, photos, or location.
+- Results are stored **on your device or on the server you choose**. The developer does not receive them.
+- Two features use the network: the optional breached-password check (five characters of a SHA-1 hash)
+  and the connection to your own CampusShield server. The link inspector never opens or fetches the link.
+- You can erase everything from **Settings → Clear all data**, or by uninstalling the app.
+
+## 2. Scope
+
+This policy applies to the apps and server software we distribute. It does **not** apply to a
+CampusShield server operated by a university, employer, or other third party. In that case, the
+operator of that server is the data controller and their own privacy notice applies. CampusShield
+software is self-hosted by design; we do not run a shared backend for the shipped apps.
+
+## 3. Information the app handles
+
+### 3.1 Device check results (created only when you press "Check device")
+
+On macOS, the desktop app and self-hosted web server run read-only system commands and store the
+following in the configured data store:
+
+| Item | Example | Why |
+| --- | --- | --- |
+| macOS version and Mac model family | `macOS 15.6`, `MacBook Pro` | Identify the checked device |
+| Hostname | `lab-mac-04` | Label the device in your list |
+| Security-setting status | FileVault on/off, firewall on/off, Gatekeeper, SIP, screen-lock delay, guest account, automatic-update setting | Produce the score and findings |
+| Names of recent installer/script files in `~/Downloads` | `installer.dmg` | Point out files worth reviewing (names only; file contents are never opened) |
+| Names of third-party login-item files | `com.example.agent.plist` | Point out background items worth reviewing |
+| Pending macOS update labels | `macOS Sequoia 15.7.1` | Show available updates |
+| Score, grade, rule version, timestamps | `90`, `Good`, `2026.11`, ISO date | Explain and compare checks |
+
+Full findings, including the plain-language recommendation for each item, are stored so the history is
+reproducible. The check does not read file contents, does not require administrator rights, does not
+install a driver or kernel extension, and does not monitor activity in the background.
+
+### 3.2 Linked devices (created when you add a device)
+
+The name you type, device kind (computer, phone, tablet, browser), platform, source, timestamps, role,
+and — once that device is actually checked — its score and grade. A linked device with no check shows
+"Not checked" and does not affect the average. Linking a device does not transmit anything from that
+device.
+
+### 3.3 Campus threat queue (operator feature)
+
+If an operator ingests events into their own CampusShield server, those events and the analyst's
+actions are stored in that server's data store. An event may contain a group name, event type, source
+label, count, detail text, severity, rule, recommendation, and arbitrary metadata supplied by the
+ingesting system. **The operator decides what to ingest and must ensure it is authorized and lawful.**
+Do not submit special-category data, and avoid personal data that is not needed for triage.
+
+### 3.4 On-device settings
+
+The web, desktop, and mobile apps keep two values in browser local storage: the API base URL you
+configure and your auto-refresh preference (on/off and interval). On the desktop app the server stores
+its data in the OS application-data directory
+(`~/Library/Application Support/CampusShield/data` on macOS).
+
+### 3.5 What we never collect
+
+No files or file contents, keystrokes, clipboard, browsing history, screen recordings, screenshots,
+camera or microphone input, contacts, calendars, photos, precise location, advertising identifiers, or
+installed-app inventory beyond the login-item filenames listed above. No crash reports, usage
+analytics, or device fingerprints are sent to us.
+
+## 4. Network connections
+
+| Destination | When | What is sent | Notes |
+| --- | --- | --- | --- |
+| Your CampusShield server (self-hosted, or `127.0.0.1` in the desktop app) | Loading data and running checks | The API request and its JSON payload | Under your control; use HTTPS if it is reachable beyond localhost |
+| `api.pwnedpasswords.com` (Pwned Passwords range API, operated by Have I Been Pwned) | Only when you submit a password to the password tool | The **first five characters** of the password's SHA-1 hash, with `Add-Padding: true` | The password and the full hash never leave the device; the response is only a list of hash suffixes and counts |
+| Apple's software-update service | Only during a macOS device check, via the system `softwareupdate` tool | No CampusShield data; the request is made by macOS | Needed to list pending updates; governed by Apple's privacy policy |
+| MongoDB Atlas | Only if the operator sets `MONGODB_URI` on their own server | Events, actions, audit entries, devices | The operator's own Atlas account and MongoDB's privacy terms apply |
+
+The link inspector performs all checks in the browser and never opens, resolves, or fetches the URL you
+paste. Timestamps and device names are not attached to the password request.
+
+## 5. macOS permissions
+
+- **Downloads folder:** macOS may ask for permission to list the Downloads folder during a check. If
+  you decline, that single finding shows "Unverified" and nothing is read.
+- CampusShield does **not** request Full Disk Access, Accessibility, Screen Recording, Input Monitoring,
+  or administrator/sudo rights. If a command is blocked or unavailable, the check reports "Unverified"
+  rather than guessing.
+- You can revoke Downloads access at any time in System Settings → Privacy & Security → Files and
+  Folders.
+
+## 6. Storage, retention, and deletion
+
+- Data lives in the store configured by the person running the server: a local JSON file or their own
+  MongoDB database. There is no developer cloud copy.
+- Retention is controlled by that operator. The default build keeps records until deleted.
+- **Delete everything:** Settings → Clear all data (also available as `DELETE /api/events`), which
+  removes events, decisions, audit entries, and devices. Remove a single device from the Protection
+  screen. Uninstalling the desktop or mobile app removes its local app data; a self-hosted server's
+  data must be deleted on that server.
+- Browser local storage can be cleared through the browser's site-data settings.
+
+## 7. Security
+
+- The desktop app binds its server to `127.0.0.1` on an ephemeral port, so checks and data stay on the
+  machine.
+- The shipped server has **no authentication or role-based access**. Do not expose it to the internet
+  without putting authentication, TLS, and authorization in front of it, and do not ingest data you are
+  not authorized to process.
+- Mobile builds require you to enter the server URL; use HTTPS for anything beyond a trusted LAN.
+- No method of storage or transmission is completely secure. We cannot guarantee absolute security.
+
+## 8. Children
+
+CampusShield is intended for university and workplace audiences and is not directed to children under
+13 (or the minimum age in your country). We do not knowingly collect personal information from
+children. If you believe a child has provided information to a CampusShield server, contact the
+operator of that server to delete it.
+
+## 9. Your rights
+
+Because we do not receive your data, requests to access, correct, export, or delete it are handled on
+the device or server that holds it. The app includes a JSON export and a full reset. If you believe we
+hold your data (for example, you contacted support by email), contact us at
+**[privacy@your-domain.example]** and we will respond within the period required by applicable law
+(typically 30 days). You may also complain to your local data-protection authority.
+
+## 10. International transfers
+
+The apps do not transfer data to us. If an operator configures a server or MongoDB Atlas in another
+region, that operator is responsible for the lawful basis and safeguards for the transfer.
+
+## 11. Changes
+
+We will update this policy when the app's data practices change and revise the date above. Material
+changes will be noted in the release notes and, where required, in-app before the change takes effect.
+
+## 12. Contact
+
+**[YOUR LEGAL NAME OR COMPANY]**
+**[privacy@your-domain.example]**
+**[your postal address]**
+
+## Appendix A — Store privacy disclosures
+
+These are the answers that match the shipped build. Re-check them whenever you add a backend, account
+system, analytics SDK, crash reporter, or ads.
+
+### Apple App Store / Mac App Store (App Privacy)
+
+- **Data Not Collected.** The shipped apps send data only to a server the user configures, and the
+  developer operates no backend. Complete the questionnaire with "No" for tracking and "No" for data
+  collection, and add the review note in [store-listing.md](store-listing.md).
+- If you later ship a hosted CampusShield backend, declare at minimum *Device ID* and *Other Usage
+  Data* (device posture results) linked to the user, used for App Functionality, and update this policy.
+- The app does not use the Advertising Identifier and does not track across apps or websites.
+
+### Google Play (Data safety)
+
+- **No data collected or shared** for the shipped configuration (no developer backend, no analytics,
+  no ads).
+- Data is encrypted in transit when the user configures an HTTPS server. The app declares only the
+  `INTERNET` permission. Release builds block cleartext traffic; debug builds allow it for LAN testing.
+- Data deletion: users can delete all data in-app (Settings → Clear all data) and by uninstalling.
+  Provide **[privacy@your-domain.example]** as the deletion-request contact.
+
+### Microsoft Store
+
+- The package makes no network calls to Microsoft or to the publisher. Declare no collected data and
+  link this policy in Partner Center. The desktop app stores data in the local app-data folder.

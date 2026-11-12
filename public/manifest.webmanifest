@@ -1,0 +1,33 @@
+{
+  "name": "CampusShield",
+  "short_name": "CampusShield",
+  "description": "One safety score across your devices, with read-only posture checks, phishing pattern tools, and breached-password checks.",
+  "id": "/",
+  "start_url": "/#/protection",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#070e1c",
+  "theme_color": "#070e1c",
+  "categories": ["security", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

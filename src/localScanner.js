@@ -48,7 +48,11 @@ async function scanMacLogs() {
     .filter(row => {
       const message = String(row.eventMessage || "").toLowerCase();
 
-      return !message.includes("localscanner.js");
+      return !(
+        message.includes("localscanner.js") ||
+        message.includes("log run noninteractively") ||
+        message.includes("--predicate")
+      );
     })
     .slice(0, 100)
     .map(row => {

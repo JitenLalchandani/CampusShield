@@ -2,5 +2,14 @@
 node_modules/
 .DS_Store
 
+# Runtime data and packaged desktop builds
+data/
+dist/
+
 # Local backup files
 *.backup*
+
+# Android release signing
+keystore.properties
+*.jks
+*.keystore

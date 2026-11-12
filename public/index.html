@@ -1,503 +1,172 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CampusShield | Campus Threat Response</title>
-<style>
-:root {
-  --bg: #091121;
-  --panel: #111d33;
-  --line: #263957;
-  --txt: #eaf1ff;
-  --muted: #91a3c2;
-  --cyan: #39d5ff;
-  --green: #35d39a;
-  --yellow: #ffca65;
-}
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  background: radial-gradient(ellipse at top left,#152847,var(--bg) 55%);
-  color: var(--txt);
-  font: 15px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-}
-header {
-  padding: 18px 5%;
-  border-bottom: 1px solid var(--line);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-}
-.brand { font-weight: 800; font-size: 20px; }
-.muted { color: var(--muted); }
-.pill {
-  border: 1px solid var(--line);
-  border-radius: 24px;
-  padding: 7px 12px;
-  color: var(--yellow);
-  font-size: 12px;
-  font-weight: 800;
-}
-main { max-width: 1400px; margin: auto; padding: 30px 24px; }
-.eyebrow {
-  color: var(--cyan);
-  font-weight: 800;
-  letter-spacing: 2px;
-  font-size: 12px;
-}
-h1 { font-size: clamp(30px,4vw,44px); line-height: 1.12; margin: 10px 0; }
-h1 span { color: var(--cyan); }
-.intro {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 24px;
-  margin-bottom: 24px;
-}
-button {
-  background: var(--cyan);
-  color: #061323;
-  border: 0;
-  border-radius: 10px;
-  padding: 12px 17px;
-  font-weight: 800;
-  cursor: pointer;
-}
-button:disabled { opacity: .55; cursor: not-allowed; }
-.grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; }
-.card {
-  background: rgba(17,29,51,.88);
-  border: 1px solid var(--line);
-  border-radius: 17px;
-  padding: 18px;
-  min-width: 0;
-}
-.label { color: var(--muted); font-size: 12px; font-weight: 800; }
-.metric { font-size: 30px; font-weight: 850; margin: 6px 0; }
-.green { color: var(--green); }
-.yellow { color: var(--yellow); }
-.section { margin-top: 16px; }
-.sectionhead {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 14px;
-}
-h2 { font-size: 19px; margin: 0; }
-.layout { display: grid; grid-template-columns: 1.2fr .8fr; gap: 14px; }
-.empty {
-  border: 1px dashed #385174;
-  border-radius: 12px;
-  padding: 24px 16px;
-  text-align: center;
-  color: var(--muted);
-}
-.status { color: var(--yellow); font-weight: 800; }
-footer {
-  color: var(--muted);
-  text-align: center;
-  padding: 25px 16px;
-  font-size: 12px;
-}
-.smallbtn {
-  background: transparent;
-  color: var(--txt);
-  border: 1px solid #385174;
-  padding: 8px 12px;
-}
-#message { margin-top: 12px; color: var(--yellow); }
-@media(max-width:850px) {
-  .grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
-  .layout { grid-template-columns: 1fr; }
-  .intro { align-items: flex-start; flex-direction: column; }
-}
-@media(max-width:480px) {
-  main { padding: 22px 14px; }
-  header { padding: 14px; }
-  .grid { grid-template-columns: 1fr 1fr; }
-  .card { padding: 13px; }
-  .metric { font-size: 25px; }
-}
-
-/* CampusShield mobile usability improvements */
-html {
-  -webkit-text-size-adjust: 100%;
-  scroll-behavior: smooth;
-}
-
-body {
-  min-width: 320px;
-  overflow-wrap: anywhere;
-}
-
-header {
-  flex-wrap: wrap;
-}
-
-#connection {
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  text-align: center;
-}
-
-main {
-  width: 100%;
-}
-
-.intro > div {
-  min-width: 0;
-}
-
-.intro p {
-  max-width: 720px;
-}
-
-button {
-  min-height: 44px;
-  max-width: 100%;
-  white-space: normal;
-}
-
-.card,
-.sectionhead,
-.layout > section {
-  min-width: 0;
-}
-
-.sectionhead h2 {
-  min-width: 0;
-}
-
-#queue,
-#feed,
-.empty {
-  overflow-wrap: anywhere;
-}
-
-@media (max-width: 600px) {
-  header {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 12px;
-    padding: 16px;
-  }
-
-  main {
-    padding: 20px 12px;
-  }
-
-  .brand {
-    font-size: 22px;
-  }
-
-  .pill {
-    max-width: 100%;
-    font-size: 11px;
-    white-space: normal;
-  }
-
-  h1 {
-    font-size: clamp(27px, 8vw, 36px);
-  }
-
-  .eyebrow {
-    letter-spacing: 1.2px;
-    line-height: 1.6;
-  }
-
-  .intro {
-    gap: 16px;
-  }
-
-  .intro > button {
-    width: 100%;
-  }
-
-  .grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-  }
-
-  .card {
-    padding: 14px;
-    border-radius: 14px;
-  }
-
-  .label {
-    font-size: 11px;
-    line-height: 1.4;
-  }
-
-  .metric {
-    font-size: clamp(22px, 7vw, 28px);
-    overflow-wrap: anywhere;
-  }
-
-  .sectionhead {
-    align-items: flex-start;
-    flex-wrap: wrap;
-  }
-
-  .sectionhead h2 {
-    font-size: 17px;
-  }
-
-  .sectionhead .muted {
-    font-size: 12px;
-  }
-
-  .empty {
-    padding: 18px 12px;
-  }
-
-  .layout {
-    gap: 12px;
-  }
-
-  #refresh {
-    min-width: 88px;
-  }
-
-  footer {
-    padding: 22px 14px;
-  }
-}
-
-@media (max-width: 360px) {
-  .grid {
-    grid-template-columns: 1fr;
-  }
-
-  main {
-    padding-right: 10px;
-    padding-left: 10px;
-  }
-}
-
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#070e1c">
+  <meta name="description" content="CampusShield — one safety score across your devices, with read-only posture checks, phishing pattern tools, and breached-password checks.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' http: https:; font-src 'self'; worker-src 'self'; base-uri 'self'; form-action 'self'">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="CampusShield">
+  <title>CampusShield · Campus Threat Response</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="/css/app.css">
 </head>
 <body>
-<header>
-  <div>
-    <div class="brand"><span style="color:var(--cyan)">◈</span> CampusShield</div>
-    <div class="muted" style="font-size:11px;letter-spacing:1px">CAMPUS THREAT RESPONSE</div>
-  </div>
-  <span class="pill" id="connection">● CHECKING CONNECTION</span>
-</header>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#/protection" aria-label="CampusShield home">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2.8 19 5.6v5.1c0 4.6-3 8.1-7 10.5-4-2.4-7-5.9-7-10.5V5.6L12 2.8Z"/>
+            <path d="M9.2 11.8 11.3 14l3.5-4.2"/>
+          </svg>
+        </span>
+        <span class="brand-text">
+          <strong>CampusShield</strong>
+          <small>Cross-device safety</small>
+        </span>
+      </a>
 
-<main>
-  <div class="intro">
-    <div>
-      <div class="eyebrow">UNIVERSITY CYBERSECURITY AT SCALE</div>
-      <h1>One campus. Thousands of devices.<br><span>One coordinated response.</span></h1>
-      <p class="muted">Privacy-aware threat triage across students, faculty, labs, administration and guests.</p>
-    </div>
-    <button id="scan" title="A live SIEM scanner is not connected">Scanner Not Connected</button>
-  </div>
+      <nav class="side-nav" aria-label="Primary">
+        <a class="nav-link" href="#/protection" data-route="protection">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2.8 19 5.6v5.1c0 4.6-3 8.1-7 10.5-4-2.4-7-5.9-7-10.5V5.6L12 2.8Z"/>
+              <path d="M9.2 11.8 11.3 14l3.5-4.2"/>
+            </svg>
+          </span>
+          <span>Protection</span>
+        </a>
+        <a class="nav-link" href="#/threats" data-route="threats">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3 21 20H3L12 3Z"/><path d="M12 10v4.5"/><circle cx="12" cy="17.4" r=".9" fill="currentColor" stroke="none"/>
+            </svg>
+          </span>
+          <span>Threats</span>
+          <span class="nav-count" id="threatCount" hidden>0</span>
+        </a>
+        <a class="nav-link" href="#/activity" data-route="activity">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 12h3.6l2.4-6 4 12 2.6-6H21"/>
+            </svg>
+          </span>
+          <span>Activity</span>
+        </a>
+        <a class="nav-link" href="#/coverage" data-route="coverage">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/>
+            </svg>
+          </span>
+          <span>Coverage</span>
+        </a>
+        <a class="nav-link" href="#/settings" data-route="settings">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 7h9"/><circle cx="16" cy="7" r="2.6"/><path d="M20 17h-9"/><circle cx="8" cy="17" r="2.6"/>
+            </svg>
+          </span>
+          <span>Settings</span>
+        </a>
+      </nav>
 
-  <section class="grid">
-    <div class="card">
-      <div class="label">DEVICES REPORTING</div>
-      <div class="metric" id="devices">—</div>
-      <span class="muted">No device source connected</span>
-    </div>
-    <div class="card">
-      <div class="label">EVENTS RECEIVED</div>
-      <div class="metric" id="total">0</div>
-      <span class="muted">Current session data</span>
-    </div>
-    <div class="card">
-      <div class="label">OPEN HIGH-PRIORITY</div>
-      <div class="metric" id="high">0</div>
-      <span class="muted">Based on received events</span>
-    </div>
-    <div class="card">
-      <div class="label">ACTIONS RECORDED</div>
-      <div class="metric" id="actions">0</div>
-      <span class="muted">Prototype workflow</span>
-    </div>
-  </section>
-
-  <section class="card section">
-    <div class="sectionhead">
-      <h2>Campus device landscape</h2>
-      <span class="muted">Live inventory unavailable</span>
-    </div>
-    <div class="empty">
-      <strong>No campus inventory connected</strong>
-      <div>Device totals and campus-group counts will appear when an approved inventory source is integrated.</div>
-    </div>
-  </section>
-
-  <div class="layout section">
-    <section class="card">
-      <div class="sectionhead">
-        <h2>Prioritized threat queue</h2>
-        <button class="smallbtn" id="refresh">Refresh</button>
+      <div class="side-foot">
+        <div class="storage-note">
+          <span class="dot" id="storageDot"></span>
+          <span>
+            <strong id="storageName">Connecting</strong>
+            <small id="storageText">Checking the API</small>
+          </span>
+        </div>
+        <p class="tiny">Prototype. No live SIEM or campus inventory is connected.</p>
       </div>
-      <div id="queue" class="empty">Loading event data…</div>
-    </section>
+    </aside>
 
-    <section class="card">
-      <div class="sectionhead">
-        <h2>Recent activity</h2>
-        <span class="muted" id="apiStatus">Checking API…</span>
-      </div>
-      <div id="feed" class="empty">Loading activity…</div>
-    </section>
+    <div class="content">
+      <div id="bannerRoot"></div>
+
+      <header class="topbar">
+        <div class="topbar-heading">
+          <p class="eyebrow" id="pageEyebrow">Operations</p>
+          <h1 id="pageTitle">Overview</h1>
+          <p class="page-sub" id="pageSubtitle">Loading the latest campus telemetry…</p>
+        </div>
+        <div class="topbar-actions">
+          <span class="conn-pill" id="connPill">
+            <span class="dot"></span>
+            <span id="connText">Connecting</span>
+          </span>
+          <button class="icon-btn" id="refreshBtn" type="button" aria-label="Refresh data" title="Refresh">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 11.5A8 8 0 1 0 18 17"/><path d="M20 5v6h-6"/>
+            </svg>
+          </button>
+          <button class="btn primary" id="deviceCheckBtn" type="button" title="Run read-only checks on this computer">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="2.2"/><path d="M12 3v3.2M12 17.8V21M3 12h3.2M17.8 12H21"/>
+              <path d="M6.2 17.8a8.2 8.2 0 0 1 0-11.6M17.8 6.2a8.2 8.2 0 0 1 0 11.6"/>
+            </svg>
+            <span class="btn-label">Check device</span>
+          </button>
+        </div>
+      </header>
+
+      <main id="view" class="view" tabindex="-1">
+        <div class="loading-state">
+          <span class="spinner" aria-hidden="true"></span>
+          <p>Loading CampusShield…</p>
+        </div>
+      </main>
+
+      <footer class="app-footer">
+        CampusShield · Read-only device checks · No fabricated events · No live university integrations
+      </footer>
+    </div>
   </div>
 
-  <section class="card section">
-    <h2>Detection and response workflow</h2>
-    <p class="muted">01 · Collect approved telemetry → 02 · Evaluate signals → 03 · Analyst reviews alerts → 04 · Authorized response</p>
-    <p class="status">Current state: Local macOS log scanning is available. No live Wazuh SIEM or campus telemetry is connected.</p>
-    <p class="muted">This prototype does not scan campus devices or change real account, endpoint or network settings.</p>
-    <div id="message" role="status"></div>
-  </section>
-</main>
+  <nav class="tabbar" aria-label="Primary">
+    <a class="tab-link" href="#/protection" data-route="protection">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 2.8 19 5.6v5.1c0 4.6-3 8.1-7 10.5-4-2.4-7-5.9-7-10.5V5.6L12 2.8Z"/>
+        <path d="M9.2 11.8 11.3 14l3.5-4.2"/>
+      </svg>
+      <span>Protection</span>
+    </a>
+    <a class="tab-link" href="#/threats" data-route="threats">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 3 21 20H3L12 3Z"/><path d="M12 10v4.5"/><circle cx="12" cy="17.4" r=".9" fill="currentColor" stroke="none"/>
+      </svg>
+      <span>Threats</span>
+    </a>
+    <a class="tab-link" href="#/activity" data-route="activity">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 12h3.6l2.4-6 4 12 2.6-6H21"/>
+      </svg>
+      <span>Activity</span>
+    </a>
+    <a class="tab-link" href="#/coverage" data-route="coverage">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/>
+      </svg>
+      <span>Coverage</span>
+    </a>
+    <a class="tab-link" href="#/settings" data-route="settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 7h9"/><circle cx="16" cy="7" r="2.6"/><path d="M20 17h-9"/><circle cx="8" cy="17" r="2.6"/>
+      </svg>
+      <span>Settings</span>
+    </a>
+  </nav>
 
-<footer>CampusShield prototype · No fabricated events · No live university integrations</footer>
+  <div id="drawerRoot"></div>
+  <div id="toastRoot" class="toast-root" role="status" aria-live="polite"></div>
 
-<script>
-const $ = id => document.getElementById(id);
-
-async function api(url) {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error("API request failed: " + response.status);
-  return response.json();
-}
-
-function escapeHTML(value) {
-  return String(value ?? "").replace(/[&<>"']/g, ch => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;"
-  }[ch]));
-}
-
-async function loadDashboard() {
-  $("refresh").disabled = true;
-  try {
-    const [summary, result] = await Promise.all([
-      api("/api/summary"),
-      api("/api/events")
-    ]);
-
-    const events = Array.isArray(result.events) ? result.events : [];
-    $("connection").textContent = "● API REACHABLE · NO LIVE SOURCE";
-    $("apiStatus").textContent = "API reachable";
-    $("devices").textContent =
-      summary.devicesReporting == null ? "—" : summary.devicesReporting;
-    $("total").textContent = summary.eventsTotal ?? result.total ?? events.length;
-    $("high").textContent = summary.highPriority ?? 0;
-    $("actions").textContent =
-      (summary.underReview ?? 0) + (summary.contained ?? 0);
-
-    if (events.length === 0) {
-      $("queue").innerHTML =
-        '<strong>No events received</strong><div>No threat alerts are available to display.</div>';
-      $("feed").innerHTML =
-        '<strong>No recent activity</strong><div>Connect an approved event source to populate this panel.</div>';
-    } else {
-      $("queue").innerHTML = events.map(event => `
-        <div style="text-align:left;border-bottom:1px solid var(--line);padding:12px 0">
-          <strong>${escapeHTML(event.severity)} · ${escapeHTML(event.type)}</strong>
-          <div>${escapeHTML(event.group)} — ${escapeHTML(event.detail)}</div>
-          <div class="muted">Source: ${escapeHTML(event.source)} · Status: ${escapeHTML(event.status)}</div>
-          <button class="smallbtn" data-action="Investigate" data-id="${escapeHTML(event.id)}">Investigate</button>
-          <button class="smallbtn" data-action="Contain" data-id="${escapeHTML(event.id)}">Record containment (demo)</button>
-        </div>`).join("");
-
-      $("feed").innerHTML = events.slice(0, 5).map(event => `
-        <div style="text-align:left;border-bottom:1px solid var(--line);padding:10px 0">
-          <strong>${escapeHTML(event.severity)} · ${escapeHTML(event.rule)}</strong>
-          <div class="muted">${escapeHTML(event.group)} — ${escapeHTML(event.detail)}</div>
-        </div>`).join("");
-    }
-
-    $("scan").textContent = "Run Local Scan";
-  } catch (error) {
-    $("connection").textContent = "● API UNAVAILABLE";
-    $("apiStatus").textContent = "Connection failed";
-    $("queue").textContent = "Unable to load events. Check that the backend is running.";
-    $("feed").textContent = "Activity is unavailable while the API is disconnected.";
-    $("message").textContent = error.message;
-  } finally {
-    $("refresh").disabled = false;
-  }
-}
-
-$("refresh").addEventListener("click", loadDashboard);
-
-
-$("scan").addEventListener("click", async () => {
-  const button = $("scan");
-  const message = $("message");
-
-  button.disabled = true;
-  button.textContent = "Scanning...";
-  message.style.display = "block";
-  message.textContent = "Scanning recent macOS logs for security indicators...";
-
-  try {
-    const response = await fetch("/api/scan", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" }
-    });
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      throw new Error(result.error || result.message || "Scan failed");
-    }
-
-    message.textContent =
-      `${result.message} Scanner: ${result.scanner}. ` +
-      `Indicators matched: ${result.indicatorsMatched}. ` +
-      `New events saved: ${result.newEventsSaved}. ` +
-      `Duplicates skipped: ${result.duplicatesSkipped}. ` +
-      "Indicators require review and do not prove an attack.";
-
-    await loadDashboard();
-  } catch (error) {
-    message.textContent = "Scan failed: " + error.message;
-  } finally {
-    button.disabled = false;
-    button.textContent = "Run Local Scan";
-  }
-});
-
-
-document.addEventListener("click", async event => {
-  const button = event.target.closest("button[data-action]");
-  if (!button) return;
-
-  try {
-    const response = await fetch(
-      "/api/alerts/" + encodeURIComponent(button.dataset.id) + "/action",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: button.dataset.action })
-      }
-    );
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || "Action failed");
-    $("message").textContent = result.note || "Action recorded.";
-    await loadDashboard();
-  } catch (error) {
-    $("message").textContent = error.message;
-  }
-});
-
-loadDashboard();
-</script>
+  <script type="module" src="/js/app.js"></script>
 </body>
 </html>
-
