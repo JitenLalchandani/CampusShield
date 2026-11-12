@@ -118,10 +118,12 @@ paste. Timestamps and device names are not attached to the password request.
 
 - **Downloads, Desktop, and Documents folders:** macOS may ask for permission to read these folders
   during a device check, a file scan, or after you start the folder watch. If you decline, those
-  folders are skipped and the related finding shows "Unverified" or the scan reports fewer files.
-- CampusShield does **not** request Full Disk Access, Accessibility, Screen Recording, Input Monitoring,
-  or administrator/sudo rights. If a command or folder is blocked or unavailable, the app reports
-  "Unverified" rather than guessing.
+  folders are skipped and the related finding shows "Unverified" or the scan names the folders it
+  could not read.
+- CampusShield does **not** request Accessibility, Screen Recording, Input Monitoring, or
+  administrator/sudo rights, and it cannot grant itself Full Disk Access. macOS blocks some folders
+  for unsandboxed and development builds; if you want those included, you may grant Full Disk Access
+  manually in System Settings → Privacy & Security. The app never pretends a skipped folder was clean.
 - You can revoke Downloads access at any time in System Settings → Privacy & Security → Files and
   Folders.
 

@@ -238,6 +238,9 @@ localhost.
 - Device checks are implemented for macOS hosts. Phone and Windows posture checks need native plugins.
 - The macOS audit may show "Unverified" when TCC blocks a path (for example Downloads) or a command is
   unavailable; it never converts an unknown into a pass.
+- macOS also blocks file scanning outside the app sandbox until you grant CampusShield **Full Disk
+  Access** (System Settings → Privacy & Security). Without it a scan completes over only the files it
+  can read and the Protection view says so instead of reporting a clean result.
 - Detection is a small, illustrative rule set — not a validated detection engine.
 - Containment records a status only; no device, account, or network state is changed.
 - There is no authentication or role-based access in this build.

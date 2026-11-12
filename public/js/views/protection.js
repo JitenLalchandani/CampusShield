@@ -87,6 +87,10 @@ export async function render(root) {
     ? (lastScan.threats || []).filter(threat => threat.status === "detected").length
     : 0;
   const activeScan = scanner.active || null;
+  const coverage = scanCoverage(lastScan);
+  const coverageWarning = coverage.blocked.length
+    ? `<div class="scan-warning">${icon("alert")} <span><strong>${num(coverage.blocked.length)} folder${coverage.blocked.length === 1 ? "" : "s"} could not be read.</strong> macOS blocked access to ${esc(coverage.blocked.join(", "))}. Only ${num(lastScan.filesScanned)} file${lastScan.filesScanned === 1 ? "" : "s"} were checked. Grant CampusShield Full Disk Access in System Settings → Privacy &amp; Security, then scan again.</span></div>`
+    : "";
 
   root.innerHTML = `
     <section class="card score-hero" data-tone="${tone}">
@@ -217,9 +221,11 @@ export async function render(root) {
              <span>Quarantine moves the file into the app vault. Nothing is deleted until you say so.</span>
            </div>
            <div class="threat-list">${openThreats.slice(0, 25).map(threatRow).join("")}</div>
-           ${openThreats.length > 25 ? `<p class="helper">Showing 25 of ${num(openThreats.length)}. Quarantine or delete these to see the rest.</p>` : ""}`
+           ${openThreats.length > 25 ? `<p class="helper">Showing 25 of ${num(openThreats.length)}. Quarantine or delete these to see the rest.</p>` : ""}
+           ${coverageWarning}`
         : lastScan
-          ? `<div class="scan-clear">${icon("check")} <span>No open threats. ${lastScan.truncated ? `The last scan stopped early (${esc(lastScan.stopReason || "limit reached")}) — run a full scan when you have time.` : "The last scan found nothing that needs action."}</span></div>`
+          ? `<div class="scan-clear">${icon("check")} <span>No open threats. ${lastScan.truncated ? `The last scan stopped early (${esc(lastScan.stopReason || "limit reached")}) — run a full scan when you have time.` : coverage.blocked.length ? "Nothing was found in the files it could read — this is not a clean result." : "The last scan found nothing that needs action."}</span></div>
+             ${coverageWarning}`
           : emptyState({
               iconName: "shield",
               title: "No scan has run yet",
@@ -745,6 +751,19 @@ function pollScan(root, scanId) {
 
   pollTimer = setInterval(tick, 900);
   tick();
+}
+
+function scanCoverage(scan) {
+  if (!scan) return { blocked: [], skipped: 0 };
+
+  const blocked = [];
+
+  for (const error of scan.errors || []) {
+    if (!/EPERM|EACCES|operation not permitted/i.test(String(error?.message || ""))) continue;
+    if (error?.path && !blocked.includes(error.path)) blocked.push(error.path);
+  }
+
+  return { blocked, skipped: Number(scan.skipped) || 0 };
 }
 
 function severityTone(severity) {
