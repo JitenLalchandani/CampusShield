@@ -282,7 +282,8 @@ async function auditMac() {
       : "Require a password immediately after sleep in System Settings → Lock Screen."
   ));
 
-  const guestEnabled = guest.ok && guest.stdout.trim() === "1";  checks.push(finding(
+  const guestEnabled = guest.ok && guest.stdout.trim() === "1";
+  checks.push(finding(
     "guest-account",
     "Guest account",
     guest.ok ? (guestEnabled ? "fail" : "pass") : "unknown",
@@ -378,9 +379,310 @@ async function auditMac() {
   };
 }
 
+function parseJson(output) {
+  const text = String(output || "").trim();
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function asArray(value) {
+  if (value == null) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function parseBitLocker(output) {
+  const data = parseJson(output);
+  if (!data) return { known: false };
+
+  const protection = Number(data.ProtectionStatus);
+  const status = String(data.VolumeStatus || "");
+
+  return {
+    known: true,
+    on: protection === 1 || /FullyEncrypted/i.test(status)
+  };
+}
+
+function parseFirewallProfiles(output) {
+  const profiles = asArray(parseJson(output));
+
+  if (!profiles.length) return { known: false };
+
+  return {
+    known: true,
+    on: profiles.every(profile => profile?.Enabled === true),
+    names: profiles.filter(profile => profile?.Enabled === true).length,
+    total: profiles.length
+  };
+}
+
+function parseDefenderStatus(output) {
+  const data = parseJson(output);
+  if (!data) return { known: false };
+
+  return {
+    known: true,
+    realtime: data.RealTimeProtectionEnabled === true,
+    enabled: data.AntivirusEnabled !== false,
+    signatureAge: Number.isFinite(Number(data.AntivirusSignatureAge))
+      ? Number(data.AntivirusSignatureAge)
+      : null
+  };
+}
+
+function parseHotFix(output) {
+  const data = parseJson(output);
+  if (!data?.HotFixID) return { known: false };
+
+  const installedOn = String(data.InstalledOn || "");
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(installedOn) ? new Date(`${installedOn}T00:00:00Z`) : null;
+
+  return {
+    known: true,
+    id: String(data.HotFixID),
+    installedOn: date && !Number.isNaN(date.getTime()) ? date : null
+  };
+}
+
+function parseWindowsCaption(output) {
+  const data = parseJson(output);
+  const caption = String(data?.Caption || "").trim();
+
+  if (!caption) return "";
+
+  return caption.replace(/^Microsoft\s+/i, "").replace(/\s+Insider Preview$/i, "");
+}
+
+function powershell(command, timeout = 15000) {
+  return run(
+    "powershell.exe",
+    ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command],
+    timeout
+  );
+}
+
+async function auditWindows() {
+  const [
+    osInfo,
+    modelInfo,
+    bitlocker,
+    firewall,
+    defender,
+    uac,
+    lockTimeout,
+    guest,
+    hotfix,
+    startup,
+    downloads
+  ] = await Promise.all([
+    powershell("Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version | ConvertTo-Json -Compress"),
+    powershell("Get-CimInstance Win32_ComputerSystem | Select-Object Model | ConvertTo-Json -Compress"),
+    powershell("Get-BitLockerVolume -MountPoint $env:SystemDrive -ErrorAction Stop | Select-Object VolumeStatus,ProtectionStatus | ConvertTo-Json -Compress"),
+    powershell("Get-NetFirewallProfile -ErrorAction Stop | Select-Object Name,Enabled | ConvertTo-Json -Compress"),
+    powershell("Get-MpComputerStatus -ErrorAction Stop | Select-Object RealTimeProtectionEnabled,AntivirusEnabled,AntivirusSignatureAge | ConvertTo-Json -Compress"),
+    powershell("Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System' -Name EnableLUA -ErrorAction Stop | Select-Object EnableLUA | ConvertTo-Json -Compress"),
+    powershell("$p='HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System'; (Get-ItemProperty $p -Name InactivityTimeoutSecs -ErrorAction SilentlyContinue).InactivityTimeoutSecs"),
+    powershell("Get-LocalUser -Name Guest -ErrorAction Stop | Select-Object Enabled | ConvertTo-Json -Compress"),
+    powershell("$h = Get-HotFix | Sort-Object InstalledOn -Descending | Select-Object -First 1 HotFixID, @{n='InstalledOn';e={$_.InstalledOn.ToString('yyyy-MM-dd')}}; $h | ConvertTo-Json -Compress", 25000),
+    powershell("Get-CimInstance Win32_StartupCommand -ErrorAction Stop | Select-Object Name | ConvertTo-Json -Compress"),
+    riskyDownloads()
+  ]);
+
+  const checks = [];
+  const caption = parseWindowsCaption(osInfo.stdout);
+
+  const bitlockerState = bitlocker.ok ? parseBitLocker(bitlocker.stdout) : { known: false };
+  checks.push(finding(
+    "disk-encryption",
+    "Disk encryption",
+    !bitlockerState.known ? "unknown" : bitlockerState.on ? "pass" : "fail",
+    bitlockerState.known && !bitlockerState.on ? "high" : "info",
+    !bitlockerState.known
+      ? "BitLocker status could not be read. Windows Home editions may not support BitLocker."
+      : bitlockerState.on
+        ? "BitLocker protects the system drive if the device is lost or stolen."
+        : "BitLocker is not protecting the system drive, so data is readable if the disk is removed.",
+    bitlockerState.known && !bitlockerState.on
+      ? "Turn on BitLocker for the system drive in Settings → Privacy & security → Device encryption."
+      : "No action needed."
+  ));
+
+  const firewallState = firewall.ok ? parseFirewallProfiles(firewall.stdout) : { known: false };
+  checks.push(finding(
+    "firewall",
+    "Windows firewall",
+    !firewallState.known ? "unknown" : firewallState.on ? "pass" : "fail",
+    firewallState.known && !firewallState.on ? "medium" : "info",
+    !firewallState.known
+      ? "Firewall profile status could not be read."
+      : firewallState.on
+        ? `All ${firewallState.total} firewall profiles are enabled.`
+        : `${firewallState.names} of ${firewallState.total} firewall profiles are enabled.`,
+    firewallState.known && !firewallState.on
+      ? "Enable every profile in Windows Security → Firewall & network protection."
+      : "No action needed."
+  ));
+
+  const defenderState = defender.ok ? parseDefenderStatus(defender.stdout) : { known: false };
+  let defenderStatus = "unknown";
+  let defenderSeverity = "info";
+  let defenderDetail = "Microsoft Defender status could not be read. Another antivirus may be managing protection.";
+
+  if (defenderState.known) {
+    if (!defenderState.realtime) {
+      defenderStatus = "fail";
+      defenderSeverity = "high";
+      defenderDetail = "Real-time protection is off, so new malware can run unchecked.";
+    } else if (defenderState.signatureAge != null && defenderState.signatureAge > 7) {
+      defenderStatus = "warn";
+      defenderSeverity = "low";
+      defenderDetail = `Real-time protection is on, but virus definitions are ${defenderState.signatureAge} days old.`;
+    } else {
+      defenderStatus = "pass";
+      defenderDetail = "Real-time protection is on and virus definitions are current.";
+    }
+  }
+
+  checks.push(finding(
+    "antivirus",
+    "Microsoft Defender",
+    defenderStatus,
+    defenderSeverity,
+    defenderDetail,
+    defenderStatus === "pass"
+      ? "No action needed."
+      : "Open Windows Security → Virus & threat protection and turn on real-time protection."
+  ));
+
+  const uacData = uac.ok ? parseJson(uac.stdout) : null;
+  const uacOn = uacData ? Number(uacData.EnableLUA) === 1 : null;
+  checks.push(finding(
+    "uac",
+    "User Account Control",
+    uacOn == null ? "unknown" : uacOn ? "pass" : "fail",
+    uacOn === false ? "medium" : "info",
+    uacOn == null
+      ? "User Account Control status could not be read."
+      : uacOn
+        ? "User Account Control prompts before administrative changes."
+        : "User Account Control is disabled, so apps can elevate without a prompt.",
+    uacOn === false
+      ? "Enable UAC in Control Panel → User Accounts → Change User Account Control settings."
+      : "No action needed."
+  ));
+
+  const lockSeconds = Number.parseInt(String(lockTimeout.stdout || "").trim(), 10);
+  const lockSet = lockTimeout.ok && Number.isFinite(lockSeconds) && lockSeconds > 0;
+  checks.push(finding(
+    "screen-lock",
+    "Screen lock",
+    lockSet ? (lockSeconds <= 900 ? "pass" : "warn") : "unknown",
+    lockSet && lockSeconds > 900 ? "low" : "info",
+    !lockSet
+      ? "No machine inactivity lock is configured. Per-user lock settings are not readable without administrator rights."
+      : `The machine locks after ${lockSeconds} seconds of inactivity.`,
+    lockSet && lockSeconds <= 900
+      ? "No action needed."
+      : "Configure a machine inactivity limit of 15 minutes or less in Local Security Policy."
+  ));
+
+  const guestData = guest.ok ? parseJson(guest.stdout) : null;
+  const guestEnabled = guestData ? guestData.Enabled === true : null;
+  checks.push(finding(
+    "guest-account",
+    "Guest account",
+    guestEnabled == null ? "unknown" : guestEnabled ? "fail" : "pass",
+    guestEnabled ? "medium" : "info",
+    guestEnabled == null
+      ? "Guest-account status could not be read."
+      : guestEnabled
+        ? "The built-in Guest account is enabled and can sign in without a personal password."
+        : "The built-in Guest account is disabled.",
+    guestEnabled
+      ? "Disable the Guest account in Computer Management → Local Users and Groups."
+      : "No action needed."
+  ));
+
+  const hotfixState = hotfix.ok ? parseHotFix(hotfix.stdout) : { known: false };
+  const hotfixDays = hotfixState.installedOn
+    ? Math.floor((Date.now() - hotfixState.installedOn.getTime()) / 86400000)
+    : null;
+  checks.push(finding(
+    "os-updates",
+    "Windows updates",
+    !hotfixState.known
+      ? "unknown"
+      : hotfixDays != null && hotfixDays > 60
+        ? "warn"
+        : "pass",
+    hotfixDays != null && hotfixDays > 60 ? "medium" : "info",
+    !hotfixState.known
+      ? "Installed-update history could not be read."
+      : hotfixDays != null && hotfixDays > 60
+        ? `The most recent installed update is ${hotfixDays} days old (${hotfixState.id}).`
+        : `The most recent installed update is ${hotfixState.id}${hotfixDays != null ? ` (${hotfixDays} days ago)` : ""}.`,
+    hotfixDays != null && hotfixDays > 60
+      ? "Check Windows Update for pending quality and security updates, then restart."
+      : "No action needed."
+  ));
+
+  const startupItems = startup.ok ? asArray(parseJson(startup.stdout)).filter(item => item?.Name) : [];
+  checks.push(finding(
+    "login-items",
+    "Background startup items",
+    "info",
+    "info",
+    startupItems.length
+      ? `${startupItems.length} startup command${startupItems.length === 1 ? "" : "s"} registered.`
+      : "No startup commands were read.",
+    startupItems.length
+      ? "Review startup apps in Task Manager → Startup apps."
+      : "No action needed."
+  ));
+
+  checks.push(finding(
+    "downloads",
+    "Recent installers and scripts",
+    !downloads.available ? "unknown" : downloads.found.length ? "info" : "pass",
+    "info",
+    !downloads.available
+      ? "The Downloads folder could not be read."
+      : downloads.found.length
+        ? `${downloads.found.length} recent installer or script file${downloads.found.length === 1 ? "" : "s"} in Downloads: ${downloads.found.slice(0, 4).join(", ")}.`
+        : "No recent installer or script files in Downloads.",
+    downloads.found.length
+      ? "Confirm you expected these files before opening them."
+      : "No action needed."
+  ));
+
+  const model = parseJson(modelInfo.stdout)?.Model;
+  const summary = scoreFindings(checks);
+
+  return {
+    supported: true,
+    platform: "win32",
+    platformLabel: caption || "Windows",
+    hostname: os.hostname().replace(/\.local$/i, ""),
+    model: model ? String(model).slice(0, 80) : "Windows PC",
+    checkedAt: new Date().toISOString(),
+    rulesVersion: RULES_VERSION,
+    checks,
+    ...summary
+  };
+}
+
 async function auditHost() {
   if (process.platform === "darwin") {
     return auditMac();
+  }
+
+  if (process.platform === "win32") {
+    return auditWindows();
   }
 
   return {
@@ -398,8 +700,18 @@ async function auditHost() {
     attention: 0,
     unverified: 0,
     message:
-      "Device auditing is implemented for macOS hosts. Link this device from the mobile or desktop app for platform-specific checks."
+      "Device auditing is implemented for macOS and Windows hosts. Linux checks need command mappings that are not built yet."
   };
 }
 
-module.exports = { auditHost, gradeFor, scoreFindings, RULES_VERSION };
+module.exports = {
+  auditHost,
+  gradeFor,
+  scoreFindings,
+  parseBitLocker,
+  parseFirewallProfiles,
+  parseDefenderStatus,
+  parseHotFix,
+  parseWindowsCaption,
+  RULES_VERSION
+};

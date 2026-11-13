@@ -43,6 +43,13 @@ each store version can promise.
   It runs in the user session: it can report and quarantine, but it cannot block execution.
 - **macOS device audit** — FileVault, Application Firewall, Gatekeeper, SIP, screen lock, guest account,
   automatic updates, pending macOS updates, Downloads installers/scripts, and third-party login items.
+- **Windows device audit** — BitLocker, firewall profiles, Microsoft Defender real-time state and
+  signature age, UAC, machine inactivity lock, Guest account, most recent installed update, startup
+  commands, and Downloads installers/scripts. Unreadable values stay "Unverified".
+- **API access tokens** — optional shared-secret access for a self-hosted deployment: one full-access
+  token and one read-only token, entered once in Settings. No per-user accounts or audit of callers.
+- **Signature feeds** — the built-in set plus a local JSON feed and/or an HTTPS feed fetched at startup;
+  the Protection view reports how many hashes a feed added or why it failed.
 - **Explainable scoring** — start at 100; critical −30, high −18, medium −10, low −4; unverified checks
   cost nothing but stay visible; open malware findings use the same weights, capped at 45 per device.
 - **Link inspector** — client-side heuristics for plain HTTP, embedded credentials, raw IP hosts,
@@ -61,7 +68,7 @@ each store version can promise.
 
 | Capability | macOS host (Electron / self-hosted) | iOS / iPadOS | Android | Windows |
 | --- | --- | --- | --- | --- |
-| Read-only device audit | Yes | No (sandbox) | Not yet | Not yet |
+| Read-only device audit | Yes | No (sandbox) | Not yet | Yes |
 | File scanning (quick/full) | Yes | No (sandbox) | No | Yes (same engine) |
 | Quarantine and restore | Yes | No | No | Yes |
 | Real-time folder watch | Yes (user space) | No | No | Yes (user space) |
@@ -122,15 +129,24 @@ Optional `.env`:
 
 ```bash
 PORT=3000
-MONGODB_URI=mongodb+srv://...          # use Atlas instead of the JSON store
-CAMPUSSHIELD_DATA_DIR=./data           # where the JSON store lives
-CAMPUSSHIELD_SIGNATURES=./feed.json    # optional trusted signature feed
+MONGODB_URI=mongodb+srv://...            # use Atlas instead of the JSON store
+CAMPUSSHIELD_DATA_DIR=./data             # where the JSON store lives
+CAMPUSSHIELD_SIGNATURES=./feed.json      # optional trusted signature file
+CAMPUSSHIELD_SIGNATURES_URL=https://…    # optional HTTPS signature feed, merged at startup
+CAMPUSSHIELD_API_TOKEN=change-me         # optional full-access API token
+CAMPUSSHIELD_VIEW_TOKEN=read-only        # optional GET-only API token
 CORS_ORIGIN=https://your-frontend.example
 ```
 
 The built-in signature set contains only the EICAR test file, so a fresh install cannot claim to know
-real malware. Point `CAMPUSSHIELD_SIGNATURES` at a trusted feed (`{"version":"…","entries":[{"sha256":"…","name":"…","severity":"high"}]}`)
-to add hashes you trust.
+real malware. Point `CAMPUSSHIELD_SIGNATURES` at a trusted local feed, or `CAMPUSSHIELD_SIGNATURES_URL`
+at an HTTPS JSON feed (`{"version":"…","entries":[{"sha256":"…","name":"…","severity":"high"}]}`) that
+is merged at startup. Feeds larger than 5 MB are rejected.
+
+When either API token is set, every `/api` route except `/api/health` requires
+`Authorization: Bearer <token>` or `X-Api-Token`. The admin token can read and change data; the view
+token can only issue GET/HEAD requests. Enter the token once under **Settings → API access token**.
+There are still no per-user accounts.
 
 The API allows `capacitor://localhost`, `ionic://localhost`, and localhost origins for the native
 shells; `CORS_ORIGIN` adds one extra origin. To reset the workspace, use **Settings → Clear all data**
@@ -235,7 +251,9 @@ localhost.
 - Real-time watching runs in the user session. It scans new files but cannot block execution;
   kernel-level blocking needs an Apple Endpoint Security entitlement or a signed Windows minifilter
   driver, neither of which this build ships.
-- Device checks are implemented for macOS hosts. Phone and Windows posture checks need native plugins.
+- Device checks are implemented for macOS and Windows hosts. Phone posture checks need native plugins.
+  The Windows checks were exercised through parser tests; this build has not been run end to end on a
+  Windows machine.
 - The macOS audit may show "Unverified" when TCC blocks a path (for example Downloads) or a command is
   unavailable; it never converts an unknown into a pass.
 - macOS also blocks file scanning outside the app sandbox until you grant CampusShield **Full Disk
@@ -243,7 +261,8 @@ localhost.
   can read and the Protection view says so instead of reporting a clean result.
 - Detection is a small, illustrative rule set — not a validated detection engine.
 - Containment records a status only; no device, account, or network state is changed.
-- There is no authentication or role-based access in this build.
+- API access is a shared secret, not user accounts: no per-user roles, sessions, or caller audit.
+  Without a token the server is open to anyone who can reach it.
 
 ## Store submission
 

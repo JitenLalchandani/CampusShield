@@ -104,7 +104,7 @@ async function refreshHealth() {
       scanBtn.disabled = scanning || !nextHealth.deviceAuditAvailable;
       scanBtn.title = nextHealth.deviceAuditAvailable
         ? "Run read-only checks on this computer"
-        : "Device checks are implemented for macOS hosts";
+        : "Device checks are implemented for macOS and Windows hosts";
     }
 
     if (badge) {
@@ -112,19 +112,24 @@ async function refreshHealth() {
       badge.hidden = count === 0;
       badge.textContent = count > 99 ? "99+" : String(count);
     }
-  } catch {
+  } catch (error) {
     health = null;
+    const locked = error?.status === 401;
 
     pill?.classList.remove("online");
     if (pillDot) pillDot.className = "dot off";
-    if (pillText) pillText.textContent = "API offline";
+    if (pillText) pillText.textContent = locked ? "Token required" : "API offline";
     if (pill) {
-      pill.title = `Cannot reach ${getApiBase() || window.location.origin}`;
+      pill.title = locked
+        ? "Add the API access token in Settings"
+        : `Cannot reach ${getApiBase() || window.location.origin}`;
     }
 
     if (storageDot) storageDot.className = "dot off";
-    if (storageName) storageName.textContent = "API offline";
-    if (storageText) storageText.textContent = getApiBase() || "Same origin";
+    if (storageName) storageName.textContent = locked ? "API locked" : "API offline";
+    if (storageText) {
+      storageText.textContent = locked ? "Enter a token in Settings" : getApiBase() || "Same origin";
+    }
 
     if (scanBtn) scanBtn.disabled = true;
     if (badge) badge.hidden = true;

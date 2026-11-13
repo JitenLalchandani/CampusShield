@@ -228,7 +228,7 @@ The read-only device audit runs in the macOS desktop app, which can check disk e
 
 The desktop app also scans files on macOS and Windows: SHA-256 signature matching plus heuristics for disguised file types, hidden executables, content mismatches, and risky script patterns. Findings can be quarantined, restored, or deleted, and an optional user-space folder watch scans new files as they arrive. Mobile builds link into the shared score; they do not scan their own device in this release.
 
-The Windows build scans files and links into the shared score. Windows posture checks (BitLocker, Defender, firewall, update state) are not implemented yet.
+The Windows build checks BitLocker, firewall profiles, Microsoft Defender, UAC, inactivity lock, the Guest account, installed-update age, and startup commands, and links into the shared score. Checks that Windows does not allow without administrator rights are shown as unverified rather than guessed.
 
 No account. No ads. No analytics. Data stays on your device.
 
@@ -240,8 +240,8 @@ CampusShield is not a full antivirus. Its signature set is small and updated onl
 **Store package:** Partner Center requires an MSIX/APPX (or a packaged EXE with a Store association).
 Store identity values (`identityName`, `publisher`, `publisherDisplayName`, `applicationId`) come from
 Partner Center and must be added to the `build.appx` block in `package.json`. A full-trust packaged
-desktop app may run the local server and scan files; the Windows posture audit is not implemented yet,
-so Windows users get the linked-device score, the file scanner, and the privacy tools.
+desktop app may run the local server, scan files, and run the read-only Windows posture checks; validate
+those checks on real Windows hardware before the listing promises them.
 
 ## Screenshot storyboard
 

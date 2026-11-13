@@ -142,9 +142,14 @@ paste. Timestamps and device names are not attached to the password request.
 
 - The desktop app binds its server to `127.0.0.1` on an ephemeral port, so checks and data stay on the
   machine.
-- The shipped server has **no authentication or role-based access**. Do not expose it to the internet
-  without putting authentication, TLS, and authorization in front of it, and do not ingest data you are
-  not authorized to process.
+- Authentication is opt-in and shared-secret only. If the operator sets `CAMPUSSHIELD_API_TOKEN`
+  and/or `CAMPUSSHIELD_VIEW_TOKEN`, API requests need that bearer token; the view token is GET-only.
+  There are no per-user accounts, and the token itself is stored in the browser's local storage on
+  each device that enters it. Without a token the server is open to anyone who can reach it, so do not
+  expose it to the internet without TLS and network controls as well.
+- A remote signature feed is optional. If `CAMPUSSHIELD_SIGNATURES_URL` is set, the server downloads
+  hash entries from that operator-chosen HTTPS URL at startup; hashes are not personal data, and no
+  local file names or scan results are sent.
 - Mobile builds require you to enter the server URL; use HTTPS for anything beyond a trusted LAN.
 - No method of storage or transmission is completely secure. We cannot guarantee absolute security.
 

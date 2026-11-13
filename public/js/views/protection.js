@@ -251,6 +251,13 @@ export async function render(root) {
           : "Folder watching is not available on this platform build."}
         Signatures: ${esc(scanner.signatureVersion || "unknown")}. ${esc(scanner.signatureNote || "")}
         ${scanner.signatureWarnings?.length ? ` ${esc(scanner.signatureWarnings.join(" "))}` : ""}
+        ${scanner.remoteFeed?.state === "loaded"
+          ? ` Remote feed: ${num(scanner.remoteFeed.added)} new hash${scanner.remoteFeed.added === 1 ? "" : "es"} from ${esc(scanner.remoteFeed.url)}.`
+          : scanner.remoteFeed?.state === "error"
+            ? ` Remote feed failed: ${esc(scanner.remoteFeed.message || "unknown error")}.`
+            : scanner.remoteFeed?.state === "pending"
+              ? " Remote feed: loading…"
+              : ""}
       </p>
     </section>
 

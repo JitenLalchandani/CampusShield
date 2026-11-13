@@ -232,15 +232,17 @@ Signing.
 
 ### Feature honesty
 
-The Windows device audit is **not implemented**. Windows users get the linked-device score, the link
-inspector, the password check, and the optional queue. Do not claim Windows device checks in the
-listing until `src/deviceAudit.js` supports `win32`.
+The Windows device audit is implemented in `src/deviceAudit.js` (`win32` via read-only PowerShell:
+BitLocker, firewall profiles, Defender, UAC, inactivity lock, Guest account, update age, startup
+commands). Its data parsing is covered by unit tests, but this build has **not been run end to end on
+a Windows machine**. Run a check on real Windows hardware (Home and Pro) before claiming Windows
+posture coverage in the listing, and keep the "Unverified" wording when a cmdlet is unavailable.
 
 ## 7. What each channel actually delivers
 
 | Capability | iOS/iPadOS | Android | macOS direct | Mac App Store | Windows Store |
 | --- | --- | --- | --- | --- | --- |
-| Host device check | No | No | Yes | No (sandbox) | No (not implemented) |
+| Host device check | No | No | Yes | No (sandbox) | Yes (new, not yet run on real Windows hardware) |
 | Cross-device score | Linked only | Linked only | Yes | Linked only | Linked only |
 | Link inspector | Yes | Yes | Yes | Yes | Yes |
 | Breached-password check | Yes | Yes | Yes | Yes | Yes |
@@ -304,7 +306,7 @@ Copy this into the release issue and tick every line.
 - [ ] Partner Center app reserved; identity values added to `build.appx`.
 - [ ] MSIX built and installed from the package.
 - [ ] Age rating and privacy policy URL completed.
-- [ ] Listing does not promise Windows device checks.
+- [ ] Windows device check run on real Home and Pro hardware before the listing promises posture coverage.
 
 **Direct macOS**
 
@@ -330,9 +332,11 @@ Budget several review rounds. First submissions commonly get one metadata or gui
 
 1. **Native phone checks** — iOS DeviceCheck/Keychain posture and Android Play Integrity/settings intents
    would let phones contribute a real score. Until then, mobile is explicit about being "Linked only".
-2. **Windows audit** — implement `win32` checks (BitLocker, Defender, firewall, Secure Boot, updates)
-   with read-only PowerShell/cmdlets before advertising Windows protection.
-3. **Authentication** — the server has none. Required before any hosted or multi-user deployment.
+2. **Windows audit validation** — `win32` checks are implemented; verify them on real Home and Pro
+   hardware (and add Secure Boot) before advertising Windows protection.
+3. **Authentication** — optional shared-secret tokens exist (`CAMPUSSHIELD_API_TOKEN` /
+   `CAMPUSSHIELD_VIEW_TOKEN`). Per-user accounts, sessions, and caller audit are still missing and are
+   required before a hosted multi-tenant deployment.
 4. **Mac App Store variant** — needs a sandboxed build and a feature flag that disables host checks.
 5. **Screenshots, feature graphic, hosted legal pages, support inbox** — listing assets only.
 6. **Accessibility and localization** — keyboard focus states and a screen-reader pass are worth doing

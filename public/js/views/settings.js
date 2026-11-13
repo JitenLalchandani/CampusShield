@@ -1,12 +1,14 @@
 import {
   api,
   getApiBase,
+  getApiToken,
   getSettings,
   isDesktopShell,
   isNativeShell,
   isStandalone,
   saveSettings,
-  setApiBase
+  setApiBase,
+  setApiToken
 } from "../api.js";
 import { esc, icon, toast } from "../ui.js";
 
@@ -28,6 +30,7 @@ export async function render(root) {
   const summary = await api("/api/summary").catch(() => null);
   const settings = getSettings();
   const base = getApiBase();
+  const token = getApiToken();
   const native = isNativeShell();
   const desktop = isDesktopShell();
   const installed = isStandalone();
@@ -51,6 +54,13 @@ export async function render(root) {
               value="${esc(base)}" autocomplete="off" spellcheck="false">
           </label>
 
+          <label class="field" style="margin-top:12px">
+            <span>API access token</span>
+            <input class="input" id="apiTokenInput" type="password" autocomplete="off" spellcheck="false"
+              placeholder="${health?.authRequired ? "Required by this server" : "Not required by this server"}"
+              value="${esc(token)}">
+          </label>
+
           <div class="form-row" style="margin-top:10px">
             <button class="btn primary" id="saveApi" type="button">Save &amp; test</button>
             <button class="btn subtle" id="resetApi" type="button">Use same origin</button>
@@ -58,11 +68,17 @@ export async function render(root) {
 
           <p class="helper" id="apiTestResult"></p>
           <p class="helper">
-            Leave this blank when the web app is served by the same Express
+            Leave the URL blank when the web app is served by the same Express
             server. Native shells and remote deployments need the full URL.
             On a phone sharing this Mac's Wi-Fi, use
             <span class="mono">http://&lt;mac-ip&gt;:3000</span>.
+            A token is only needed when the server sets
+            <span class="mono">CAMPUSSHIELD_API_TOKEN</span> or
+            <span class="mono">CAMPUSSHIELD_VIEW_TOKEN</span>.
           </p>
+          ${health?.authRequired && !token
+            ? `<p class="warning-note">This server requires a token. Other pages stay empty until you save one here.</p>`
+            : ""}
           ${native
             ? `<p class="warning-note">Native shell detected. Use an HTTPS API in production — mobile operating systems block cleartext traffic by default.</p>`
             : ""}
@@ -163,7 +179,7 @@ export async function render(root) {
           <ul class="checklist">
             <li>${icon("info")}<span>Telemetry is limited to approved or locally scanned events; nothing is fabricated.</span></li>
             <li>${icon("info")}<span>Detection is rule-based and illustrative, not a validated engine.</span></li>
-            <li>${icon("info")}<span>There is no authentication or role-based access in this build.</span></li>
+            <li>${icon("info")}<span>API access is open by default. Set CAMPUSSHIELD_API_TOKEN for full access and CAMPUSSHIELD_VIEW_TOKEN for a read-only token.</span></li>
             <li>${icon("info")}<span>Containment records a decision only; it does not change any real system.</span></li>
             <li>${icon("info")}<span>Device checks are read-only. The file scanner uses a small local signature set plus heuristics and cannot block execution; see Protection for what it found.</span></li>
           </ul>
@@ -177,12 +193,14 @@ export async function render(root) {
 
 function bind(root, { settings }) {
   const baseInput = root.querySelector("#apiBaseInput");
+  const tokenInput = root.querySelector("#apiTokenInput");
   const result = root.querySelector("#apiTestResult");
 
   root.querySelector("#saveApi")?.addEventListener("click", async () => {
     setApiBase(baseInput.value);
+    setApiToken(tokenInput.value);
     window.dispatchEvent(new Event("campusshield:api-changed"));
-    toast("API URL saved.", { type: "success" });
+    toast("Connection settings saved.", { type: "success" });
     await testConnection(result);
   });
 
@@ -273,8 +291,9 @@ async function testConnection(result) {
   result.style.color = "var(--faint)";
 
   try {
-    const health = await api("/api/health");
-    result.textContent = `Connected · ${health.storage} · ${health.platform} · v${health.version}`;
+    const [health] = await Promise.all([api("/api/health"), api("/api/summary")]);
+    const tokenNote = health.authRequired ? " · token accepted" : "";
+    result.textContent = `Connected · ${health.storage} · ${health.platform} · v${health.version}${tokenNote}`;
     result.style.color = "var(--green)";
     toast("API connection verified.", { type: "success" });
     return true;

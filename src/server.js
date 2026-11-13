@@ -30,7 +30,31 @@ function platformLabel(platform) {
 }
 
 function deviceAuditAvailable() {
-  return process.platform === "darwin";
+  return process.platform === "darwin" || process.platform === "win32";
+}
+
+function readApiAuth() {
+  return {
+    admin: (process.env.CAMPUSSHIELD_API_TOKEN || "").trim(),
+    viewer: (process.env.CAMPUSSHIELD_VIEW_TOKEN || "").trim()
+  };
+}
+
+function requestToken(req) {
+  const header = String(req.headers.authorization || "");
+  const bearer = header.match(/^Bearer\s+(.+)$/i);
+
+  if (bearer) return bearer[1].trim();
+  return String(req.headers["x-api-token"] || "").trim();
+}
+
+function tokenMatches(candidate, expected) {
+  if (!candidate || !expected) return false;
+
+  const left = crypto.createHash("sha256").update(candidate).digest();
+  const right = crypto.createHash("sha256").update(expected).digest();
+
+  return crypto.timingSafeEqual(left, right);
 }
 
 function detect(event, action = null) {
@@ -302,7 +326,7 @@ function createApp({ store, dataDir }) {
         res.setHeader("Access-Control-Allow-Origin", origin);
         res.setHeader("Vary", "Origin");
         res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
-        res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+        res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Api-Token");
       }
     }
 
@@ -315,6 +339,34 @@ function createApp({ store, dataDir }) {
     res.setHeader("Referrer-Policy", "no-referrer");
     res.setHeader("X-Frame-Options", "DENY");
     next();
+  });
+
+  // Optional shared-secret access. Health stays open so the app can show
+  // connectivity before a token is entered.
+  const apiAuth = readApiAuth();
+  const authRequired = Boolean(apiAuth.admin || apiAuth.viewer);
+
+  app.use("/api", (req, res, next) => {
+    if (!authRequired || req.path === "/health") return next();
+
+    const token = requestToken(req);
+
+    if (tokenMatches(token, apiAuth.admin)) {
+      req.apiRole = "admin";
+      return next();
+    }
+
+    if (tokenMatches(token, apiAuth.viewer)) {
+      if (req.method === "GET" || req.method === "HEAD") {
+        req.apiRole = "viewer";
+        return next();
+      }
+
+      return res.status(403).json({ error: "This token is read-only." });
+    }
+
+    res.setHeader("WWW-Authenticate", 'Bearer realm="CampusShield"');
+    return res.status(401).json({ error: "API token required." });
   });
 
   app.get("/api/health", (_req, res) => {
@@ -330,6 +382,7 @@ function createApp({ store, dataDir }) {
       platformLabel: platformLabel(process.platform),
       scannerAvailable: process.platform === "darwin",
       deviceAuditAvailable: deviceAuditAvailable(),
+      authRequired,
       fileScanner: {
         engineVersion: scannerStatus.engineVersion,
         signatureVersion: scannerStatus.signatureVersion,

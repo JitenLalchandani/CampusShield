@@ -1,4 +1,5 @@
 const BASE_KEY = "campusshield.apiBase";
+const TOKEN_KEY = "campusshield.apiToken";
 const SETTINGS_KEY = "campusshield.settings";
 
 const DEFAULT_SETTINGS = {
@@ -35,16 +36,39 @@ export function setApiBase(value) {
   return clean;
 }
 
+export function getApiToken() {
+  try {
+    return (localStorage.getItem(TOKEN_KEY) || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+export function setApiToken(value) {
+  const clean = String(value || "").trim();
+
+  try {
+    if (clean) localStorage.setItem(TOKEN_KEY, clean);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* storage may be unavailable */
+  }
+
+  return clean;
+}
+
 export function apiUrl(path) {
   const base = getApiBase();
   return base ? `${base}${path}` : path;
 }
 
 export async function api(path, options = {}) {
+  const token = getApiToken();
   const init = {
     method: options.method || "GET",
     headers: {
       Accept: "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.headers || {})
     }
   };
@@ -75,6 +99,20 @@ export async function api(path, options = {}) {
     } catch {
       payload = null;
     }
+  }
+
+  if (response.status === 401) {
+    throw new ApiError(
+      "This server requires an API token. Add it in Settings → API access token.",
+      401
+    );
+  }
+
+  if (response.status === 403) {
+    throw new ApiError(
+      payload?.error || "This token is read-only, so this change was blocked.",
+      403
+    );
   }
 
   if (!response.ok) {

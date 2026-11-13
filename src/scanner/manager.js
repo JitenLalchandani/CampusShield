@@ -6,16 +6,49 @@ const fs = require("node:fs/promises");
 const { ENGINE_VERSION, LIMITS, scan, scanRoots, scanSingleFile } = require("./engine");
 const { severityWeight } = require("./heuristics");
 const { createQuarantine } = require("./quarantine");
-const { loadSignatures } = require("./signatures");
+const { loadSignatures, refreshSignaturesFromUrl } = require("./signatures");
 const { createWatcher } = require("./watcher");
 
 const PENALTY_CAP = 45;
 const REALTIME_SCAN_ID = "realtime";
 const HISTORY_LIMIT = 50;
 
+function feedHost(url) {
+  if (!url) return "";
+
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "invalid URL";
+  }
+}
+
 function createScannerService({ store, dataDir, audit, onThreatsChanged }) {
   const signatures = loadSignatures();
   const quarantine = createQuarantine(dataDir);
+  const remoteFeed = {
+    url: (process.env.CAMPUSSHIELD_SIGNATURES_URL || "").trim(),
+    state: "off",
+    added: 0,
+    message: null,
+    checkedAt: null
+  };
+
+  if (remoteFeed.url) {
+    remoteFeed.state = "pending";
+
+    refreshSignaturesFromUrl(signatures, remoteFeed.url)
+      .then(result => {
+        remoteFeed.state = "loaded";
+        remoteFeed.added = result.added;
+        remoteFeed.checkedAt = new Date().toISOString();
+      })
+      .catch(error => {
+        remoteFeed.state = "error";
+        remoteFeed.message = error.message;
+        remoteFeed.checkedAt = new Date().toISOString();
+      });
+  }
 
   let active = null;
   let watcher = null;
@@ -107,6 +140,7 @@ function createScannerService({ store, dataDir, audit, onThreatsChanged }) {
       signatureCount: signatures.count,
       signatureNote: signatures.note,
       signatureWarnings: signatures.warnings,
+      remoteFeed: { ...remoteFeed, url: feedHost(remoteFeed.url) },
       limits: LIMITS,
       active: active
         ? {

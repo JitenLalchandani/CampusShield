@@ -1,6 +1,8 @@
 "use strict";
 
 const fs = require("node:fs");
+const http = require("node:http");
+const https = require("node:https");
 const path = require("node:path");
 
 const BUILTIN = require("./signatures.json");
@@ -61,6 +63,7 @@ function loadSignatures(feedPath = process.env.CAMPUSSHIELD_SIGNATURES) {
 
   return {
     version,
+    baseVersion: version,
     entries: [...byHash.values()],
     byHash,
     count: byHash.size,
@@ -69,4 +72,92 @@ function loadSignatures(feedPath = process.env.CAMPUSSHIELD_SIGNATURES) {
   };
 }
 
-module.exports = { loadSignatures, normalizeEntry };
+function isLocalUrl(url) {
+  return ["localhost", "127.0.0.1", "::1", "[::1]"].includes(url.hostname);
+}
+
+function fetchText(rawUrl, { timeoutMs = 10000, maxBytes = 5 * 1024 * 1024 } = {}) {
+  return new Promise((resolve, reject) => {
+    let url;
+
+    try {
+      url = new URL(rawUrl);
+    } catch {
+      reject(new Error("Signature feed URL is not valid."));
+      return;
+    }
+
+    if (url.protocol !== "https:" && !(url.protocol === "http:" && isLocalUrl(url))) {
+      reject(new Error("Signature feed must use HTTPS (HTTP is allowed for localhost only)."));
+      return;
+    }
+
+    const client = url.protocol === "https:" ? https : http;
+
+    const request = client.get(
+      url,
+      {
+        timeout: timeoutMs,
+        headers: { accept: "application/json", "user-agent": "CampusShield/1.0" }
+      },
+      response => {
+        if (response.statusCode !== 200) {
+          response.resume();
+          reject(new Error(`Signature feed returned HTTP ${response.statusCode}.`));
+          return;
+        }
+
+        const chunks = [];
+        let size = 0;
+
+        response.on("data", chunk => {
+          size += chunk.length;
+
+          if (size > maxBytes) {
+            request.destroy(new Error("Signature feed is larger than 5 MB."));
+            return;
+          }
+
+          chunks.push(chunk);
+        });
+
+        response.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+        response.on("error", reject);
+      }
+    );
+
+    request.on("timeout", () => request.destroy(new Error("Signature feed timed out.")));
+    request.on("error", reject);
+  });
+}
+
+async function refreshSignaturesFromUrl(signatures, rawUrl, options = {}) {
+  const raw = await fetchText(rawUrl, options);
+  const parsed = JSON.parse(raw);
+  const list = Array.isArray(parsed) ? parsed : parsed?.entries;
+
+  if (!Array.isArray(list)) {
+    throw new Error("Signature feed must be an array or an object with an entries array.");
+  }
+
+  let added = 0;
+
+  for (const entry of list) {
+    const normalized = normalizeEntry(entry);
+    if (!normalized || signatures.byHash.has(normalized.sha256)) continue;
+
+    signatures.byHash.set(normalized.sha256, normalized);
+    added += 1;
+  }
+
+  signatures.entries = [...signatures.byHash.values()];
+  signatures.count = signatures.byHash.size;
+
+  const feedVersion =
+    parsed?.version ? String(parsed.version).slice(0, 40) : new URL(rawUrl).hostname;
+  signatures.version = `${signatures.baseVersion}+${feedVersion}`;
+
+  return { added, version: signatures.version, count: signatures.count };
+}
+
+module.exports = { loadSignatures, normalizeEntry, refreshSignaturesFromUrl };

@@ -41,8 +41,8 @@ export async function render(root) {
       state: deviceChecks ? "Available" : "Unavailable",
       stateClass: deviceChecks ? "on" : "",
       description: deviceChecks
-        ? "Read-only checks on the server host: FileVault, firewall, Gatekeeper, SIP, screen lock, guest account, updates, Downloads, and login items. Scores feed the cross-device total."
-        : "Posture checks currently run on macOS hosts only. Mobile and Windows checks need native plugins before they can report a score.",
+        ? "Read-only checks on the server host: FileVault or BitLocker, firewall, Gatekeeper or Defender, screen lock, guest account, updates, Downloads, and startup items. Scores feed the cross-device total."
+        : "Posture checks run on macOS and Windows hosts in the desktop build. Mobile checks need native plugins before they can report a score.",
       action: deviceChecks ? "Run device check" : "",
       actionAttr: 'data-action="device-check"' 
     },
