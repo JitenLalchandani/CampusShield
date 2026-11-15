@@ -1,7 +1,7 @@
 # CampusShield Privacy Policy
 
 **Effective date:** 13 November 2026
-**Last updated:** 13 November 2026
+**Last updated:** 15 November 2026
 
 CampusShield is published by **[YOUR LEGAL NAME OR COMPANY]** ("CampusShield", "we", "us").
 Contact: **[privacy@your-domain.example]** · **[your postal address]**
@@ -21,8 +21,10 @@ where that information goes, and how to delete it.
   a SHA-256 hash on your own machine; it never uploads file contents. We never read keystrokes,
   browsing history, screen, camera, microphone, contacts, photos, or location.
 - Results are stored **on your device or on the server you choose**. The developer does not receive them.
-- Two features use the network: the optional breached-password check (five characters of a SHA-1 hash)
-  and the connection to your own CampusShield server. The link inspector never opens or fetches the link.
+- Two features use the network on their own: the optional breached-password check (five characters of a
+  SHA-1 hash) and the connection to your own CampusShield server. The link inspector never opens or
+  fetches the link. The optional AI assistant contacts only the endpoint you configure, only when you
+  press Explain or Summary.
 - You can erase everything from **Settings → Clear all data**, or by uninstalling the app.
 
 ## 2. Scope
@@ -89,12 +91,35 @@ Do not submit special-category data, and avoid personal data that is not needed 
 
 ### 3.5 On-device settings
 
-The web, desktop, and mobile apps keep two values in browser local storage: the API base URL you
-configure and your auto-refresh preference (on/off and interval). On the desktop app the server stores
-its data in the OS application-data directory
-(`~/Library/Application Support/CampusShield/data` on macOS).
+The web, desktop, and mobile apps keep a small number of values in browser local storage: the API base
+URL you configure, your auto-refresh preference (on/off and interval), the optional API access token,
+and — if you configure the AI assistant — its base URL, model name, and API key. These values stay in
+that browser profile; clear site data to remove them.
 
-### 3.6 What we never collect
+Protection preferences (real-time toggle, notifications, folder exclusions, and the scan schedule) are
+saved by the server in the configured data store under `settings.preferences`, so the desktop app and a
+self-hosted server share them across restarts. Exclusions are folder paths; exclude a folder if you do
+not want its path stored. On the desktop app the server stores its data in the OS application-data
+directory (`~/Library/Application Support/CampusShield/data` on macOS).
+
+### 3.6 Optional AI assistant
+
+The AI assistant is off until you enter an endpoint, model, and key in Settings. When you press
+**Explain** on a finding, the app sends that finding's file name, severity, hash, and matched reason
+labels to your CampusShield server, which forwards them to the OpenAI-compatible endpoint you chose.
+When you press **Summary**, it sends scan counts, finding counts, and the parent folder name of open
+findings (not full paths). File contents are never sent.
+
+- The API key is stored only in browser local storage and is sent with each request to your own server;
+  the server does not save it.
+- Remote AI endpoints must use HTTPS. Plain HTTP is accepted only for localhost, so a local model such
+  as Ollama can be used without TLS.
+- Your AI provider's own privacy policy governs what it does with the request. We do not receive the
+  request, the key, or the response, and cannot delete data held by that provider.
+- The assistant is advisory. It cannot create, confirm, or clear a detection, and it is never consulted
+  when the scanner decides whether a file is suspicious.
+
+### 3.7 What we never collect
 
 No file contents, keystrokes, clipboard, browsing history, screen recordings, screenshots, camera or
 microphone input, contacts, calendars, photos, precise location, advertising identifiers, or
@@ -109,7 +134,8 @@ analytics, or device fingerprints are sent to us.
 | Your CampusShield server (self-hosted, or `127.0.0.1` in the desktop app) | Loading data and running checks | The API request and its JSON payload | Under your control; use HTTPS if it is reachable beyond localhost |
 | `api.pwnedpasswords.com` (Pwned Passwords range API, operated by Have I Been Pwned) | Only when you submit a password to the password tool | The **first five characters** of the password's SHA-1 hash, with `Add-Padding: true` | The password and the full hash never leave the device; the response is only a list of hash suffixes and counts |
 | Apple's software-update service | Only during a macOS device check, via the system `softwareupdate` tool | No CampusShield data; the request is made by macOS | Needed to list pending updates; governed by Apple's privacy policy |
-| MongoDB Atlas | Only if the operator sets `MONGODB_URI` on their own server | Events, actions, audit entries, devices | The operator's own Atlas account and MongoDB's privacy terms apply |
+| MongoDB Atlas | Only if the operator sets `MONGODB_URI` on their own server | Events, actions, audit entries, devices, settings | The operator's own Atlas account and MongoDB's privacy terms apply |
+| The AI endpoint you configure (OpenAI, Azure OpenAI, OpenRouter, Groq, Ollama, etc.) | Only when you press **Explain** or **Summary** in the app | Finding name, severity, hash, and reason labels, or scan/finding counts and parent folder names — plus your API key | Off by default; HTTPS required except localhost. Governed by that provider's privacy policy |
 
 The link inspector performs all checks in the browser and never opens, resolves, or fetches the URL you
 paste. Timestamps and device names are not attached to the password request.
@@ -133,10 +159,11 @@ paste. Timestamps and device names are not attached to the password request.
   MongoDB database. There is no developer cloud copy.
 - Retention is controlled by that operator. The default build keeps records until deleted.
 - **Delete everything:** Settings → Clear all data (also available as `DELETE /api/events`), which
-  removes events, decisions, audit entries, and devices. Remove a single device from the Protection
-  screen. Uninstalling the desktop or mobile app removes its local app data; a self-hosted server's
-  data must be deleted on that server.
-- Browser local storage can be cleared through the browser's site-data settings.
+  removes events, decisions, audit entries, devices, scans, quarantine records, and saved protection
+  preferences. Remove a single device from the Protection screen. Uninstalling the desktop or mobile
+  app removes its local app data; a self-hosted server's data must be deleted on that server.
+- Browser local storage (API base URL, token, AI settings) can be cleared through the browser's
+  site-data settings or the AI card's **Remove** button.
 
 ## 7. Security
 
@@ -148,8 +175,10 @@ paste. Timestamps and device names are not attached to the password request.
   each device that enters it. Without a token the server is open to anyone who can reach it, so do not
   expose it to the internet without TLS and network controls as well.
 - A remote signature feed is optional. If `CAMPUSSHIELD_SIGNATURES_URL` is set, the server downloads
-  hash entries from that operator-chosen HTTPS URL at startup; hashes are not personal data, and no
-  local file names or scan results are sent.
+  hash entries from that operator-chosen HTTPS URL at startup and when **Update signatures** is
+  pressed; hashes are not personal data, and no local file names or scan results are sent.
+- AI credentials are entered by the user, kept in browser local storage, and never written to the
+  server's data store. The server forwards each request without logging the key.
 - Mobile builds require you to enter the server URL; use HTTPS for anything beyond a trusted LAN.
 - No method of storage or transmission is completely secure. We cannot guarantee absolute security.
 

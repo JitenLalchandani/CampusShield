@@ -1,4 +1,5 @@
-import { api } from "../api.js";
+import { api, isAiConfigured } from "../api.js";
+import { explainThreat, summarizeProtection } from "../ai.js";
 import {
   canHashPasswords,
   checkBreachedPassword,
@@ -42,6 +43,9 @@ const CHECK_ORDER = { fail: 0, warn: 0, unknown: 1, pass: 2, info: 3 };
 
 let checking = false;
 let pollTimer = null;
+let aiExplain = null;
+let aiSummary = null;
+let lastThreatKeys = null;
 
 export async function render(root) {
   if (pollTimer) {
@@ -92,6 +96,56 @@ export async function render(root) {
     ? `<div class="scan-warning">${icon("alert")} <span><strong>${num(coverage.blocked.length)} folder${coverage.blocked.length === 1 ? "" : "s"} could not be read.</strong> macOS blocked access to ${esc(coverage.blocked.join(", "))}. Only ${num(lastScan.filesScanned)} file${lastScan.filesScanned === 1 ? "" : "s"} were checked. Grant CampusShield Full Disk Access in System Settings → Privacy &amp; Security, then scan again.</span></div>`
     : "";
 
+  const aiReady = isAiConfigured();
+  const schedule = scanner.preferences?.schedule || null;
+  const scheduleLine = schedule?.enabled
+    ? `Scheduled ${schedule.scope === "full" ? "full" : "quick"} scan ${
+        schedule.frequency === "weekly"
+          ? `every ${["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][schedule.weekday] || "Monday"}`
+          : "daily"
+      } at ${esc(schedule.time)}${scanner.scheduleNextRunAt ? ` · next ${esc(dateTime(scanner.scheduleNextRunAt))}` : ""}.`
+    : "";
+
+  notifyNewThreats(openThreats, scanner.preferences);
+
+  const explainPanel = aiExplain
+    ? `<div class="ai-output" data-tone="${aiExplain.error ? "warn" : "ok"}">
+         <div class="ai-output-head">
+           <strong>${icon("shield")} AI explanation${aiExplain.name ? ` · ${esc(aiExplain.name)}` : ""}</strong>
+           <button class="icon-btn" type="button" data-close-explain aria-label="Close">${icon("x")}</button>
+         </div>
+         <p class="ai-text">${esc(aiExplain.text)}</p>
+         ${aiExplain.disclaimer ? `<p class="helper">${esc(aiExplain.disclaimer)}</p>` : ""}
+       </div>`
+    : "";
+
+  const aiSummaryCard = `
+    <section class="card protect-section">
+      <div class="card-head">
+        <div>
+          <h2>AI assistant</h2>
+          <p>Plain-language summary of the findings above</p>
+        </div>
+        <span class="chip">${aiReady ? "Your provider" : "Not configured"}</span>
+      </div>
+      ${aiReady
+        ? `<div class="form-row">
+             <button class="btn subtle" id="aiSummaryBtn" type="button">Summarize findings</button>
+             ${aiSummary ? `<button class="link" type="button" data-clear-summary>Clear</button>` : ""}
+           </div>
+           ${aiSummary
+             ? `<div class="ai-output" data-tone="${aiSummary.error ? "warn" : "ok"}">
+                  <p class="ai-text">${esc(aiSummary.text)}</p>
+                  <p class="helper">${esc(aiSummary.disclaimer || "AI guidance is advisory; detection stays local.")}</p>
+                </div>`
+             : ""}`
+        : `<p class="helper" style="margin-top:0">
+             Connect an OpenAI-compatible endpoint in <a class="link" href="#/settings">Settings → AI assistant</a>
+             to explain findings in plain language. The assistant is optional and never decides a detection.
+           </p>`}
+    </section>
+  `;
+
   root.innerHTML = `
     <section class="card score-hero" data-tone="${tone}">
       <div class="score-ring" role="img" aria-label="${score == null ? "Safety score not checked" : `Safety score ${score} out of 100, ${esc(protection.summary.grade)}`}">
@@ -117,7 +171,7 @@ export async function render(root) {
         <div class="form-row">
           <button class="btn primary" id="checkDevice" type="button"
             ${protection.auditAvailable ? "" : "disabled"}
-            title="${protection.auditAvailable ? "Run read-only checks on this Mac" : "Device checks are currently implemented for macOS hosts"}">
+            title="${protection.auditAvailable ? "Run read-only checks on this computer" : "Device checks are implemented for macOS and Windows hosts"}">
             ${icon("scan")} Check this computer
           </button>
           <button class="btn ghost" id="linkDevice" type="button">${icon("plus")} Link a device</button>
@@ -125,7 +179,7 @@ export async function render(root) {
         <p class="helper">
           ${protection.auditAvailable
             ? `Read-only checks run on the server host (${esc(protection.platformLabel)}). No setting is changed. File scanning is a separate, read-only pass you start below.`
-            : `Checks are implemented for macOS hosts. This host reports ${esc(protection.platformLabel)}, so link devices from the app instead.`}
+            : `Checks are implemented for macOS and Windows hosts. This host reports ${esc(protection.platformLabel)}, so link devices from the app instead.`}
           Rules ${esc(protection.rulesVersion)}.
         </p>
       </div>
@@ -199,7 +253,7 @@ export async function render(root) {
           <h2>Malware scan</h2>
           <p>${lastScan
             ? `Last ${lastScan.scope} scan ${esc(relativeTime(lastScan.finishedAt || lastScan.startedAt))} · ${num(lastScan.filesScanned)} files · ${num(lastScanOpen)} open threat${lastScanOpen === 1 ? "" : "s"}`
-            : "Signature and heuristic checks on files on this computer"}</p>
+            : "Signature and heuristic checks on files on this computer"}${scheduleLine ? ` ${scheduleLine}` : ""}</p>
         </div>
         <span class="chip">${icon("scan")} ${num(scanner.signatureCount || 0)} signature${scanner.signatureCount === 1 ? "" : "s"}</span>
       </div>
@@ -210,10 +264,18 @@ export async function render(root) {
         <button class="btn ghost" type="button" id="cancelScan" data-scan-id="${activeScan ? esc(activeScan.id) : ""}" ${activeScan ? "" : "hidden"}>Cancel scan</button>
       </div>
 
+      <div class="custom-scan">
+        <input class="input" id="customScanPath" type="text" spellcheck="false" autocomplete="off"
+          placeholder="Scan a specific folder or file…" ${activeScan ? "disabled" : ""}>
+        <button class="btn ghost" type="button" id="customScanBtn" ${activeScan ? "disabled" : ""}>Scan path</button>
+      </div>
+
       <div class="scan-progress" id="scanProgress" ${activeScan ? "" : "hidden"}>
         <div class="scan-bar"><span id="scanBarFill"></span></div>
         <p class="helper" id="scanProgressText">Preparing the scan…</p>
       </div>
+
+      ${explainPanel}
 
       ${openThreats.length
         ? `<div class="threat-head">
@@ -261,6 +323,8 @@ export async function render(root) {
       </p>
     </section>
 
+    ${aiSummaryCard}
+
     ${quarantine.length
       ? `<section class="card protect-section">
           <div class="card-head">
@@ -290,9 +354,9 @@ export async function render(root) {
         ? `<ul class="check-list">${checked.slice().sort((a, b) => (CHECK_ORDER[a.status] ?? 4) - (CHECK_ORDER[b.status] ?? 4)).map(checkRow).join("")}</ul>`
         : emptyState({
             iconName: "shield",
-            title: protection.auditAvailable ? "This computer has not been checked" : "Checks are macOS-only today",
+            title: protection.auditAvailable ? "This computer has not been checked" : "No posture checks on this platform",
             body: protection.auditAvailable
-              ? "Run a device check to collect FileVault, firewall, Gatekeeper, update, and login-item status."
+              ? "Run a device check to collect disk encryption, firewall, antivirus, update, and login-item status."
               : "The iOS and Android builds report a narrower set of signals. See Coverage for what is available on each platform.",
             actionLabel: protection.auditAvailable ? "Run a check" : "",
             actionAttrs: 'data-action="device-check"'
@@ -405,6 +469,74 @@ function bind(root) {
 
   root.querySelectorAll("[data-action='scan-quick']").forEach(button => {
     button.addEventListener("click", () => startScan(root, "quick"));
+  });
+
+  root.querySelector("#customScanBtn")?.addEventListener("click", () => {
+    startScan(root, "custom", root.querySelector("#customScanPath")?.value || "");
+  });
+
+  root.querySelector("#customScanPath")?.addEventListener("keydown", event => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    startScan(root, "custom", event.currentTarget.value || "");
+  });
+
+  root.querySelectorAll("[data-explain]").forEach(button => {
+    button.addEventListener("click", async () => {
+      if (!isAiConfigured()) {
+        toast("Connect an AI endpoint in Settings → AI assistant first.", { type: "info", timeout: 6000 });
+        return;
+      }
+
+      const [scanId, threatId] = String(button.dataset.explain).split(":");
+      const name = button.closest(".threat-item")?.querySelector(".threat-title strong")?.textContent || "";
+      const label = button.textContent;
+
+      button.disabled = true;
+      button.textContent = "Explaining…";
+
+      try {
+        const data = await explainThreat(scanId, threatId);
+        aiExplain = {
+          key: `${scanId}:${threatId}`,
+          name,
+          text: data.reply,
+          disclaimer: data.disclaimer
+        };
+        await render(root);
+      } catch (error) {
+        toast(error.message, { type: "error", timeout: 7000 });
+        button.disabled = false;
+        button.textContent = label;
+      }
+    });
+  });
+
+  root.querySelector("[data-close-explain]")?.addEventListener("click", async () => {
+    aiExplain = null;
+    await render(root);
+  });
+
+  root.querySelector("#aiSummaryBtn")?.addEventListener("click", async event => {
+    const button = event.currentTarget;
+
+    button.disabled = true;
+    button.textContent = "Summarizing…";
+
+    try {
+      const data = await summarizeProtection();
+      aiSummary = { text: data.reply, disclaimer: data.disclaimer };
+      await render(root);
+    } catch (error) {
+      toast(error.message, { type: "error", timeout: 7000 });
+      button.disabled = false;
+      button.textContent = "Summarize findings";
+    }
+  });
+
+  root.querySelector("[data-clear-summary]")?.addEventListener("click", async () => {
+    aiSummary = null;
+    await render(root);
   });
 
   root.querySelector("#cancelScan")?.addEventListener("click", async event => {
@@ -657,13 +789,26 @@ async function runDeviceCheck(root) {
   }
 }
 
-async function startScan(root, scope) {
+async function startScan(root, scope, target = null) {
+  const customPath = String(target || "").trim();
+
+  if (scope === "custom" && !customPath) {
+    toast("Enter a folder or full file path to scan.", { type: "error" });
+    return;
+  }
+
   const buttons = [...root.querySelectorAll("[data-scan]")];
-  if (buttons.every(button => button.disabled)) return;
+  const customButton = root.querySelector("#customScanBtn");
+  const customInput = root.querySelector("#customScanPath");
+
+  if (buttons.some(button => button.disabled) || customButton?.disabled) return;
 
   buttons.forEach(button => {
     button.disabled = true;
   });
+
+  if (customButton) customButton.disabled = true;
+  if (customInput) customInput.disabled = true;
 
   const progress = root.querySelector("#scanProgress");
   const progressText = root.querySelector("#scanProgressText");
@@ -676,11 +821,11 @@ async function startScan(root, scope) {
   try {
     const result = await api("/api/scans", {
       method: "POST",
-      body: { scope: scope === "full" ? "full" : "quick" }
+      body: scope === "custom" ? { scope: "custom", path: customPath } : { scope: scope === "full" ? "full" : "quick" }
     });
 
     toast(
-      `${scope === "full" ? "Full" : "Quick"} scan started. It runs in the background — you can keep using the app.`,
+      `${scanLabel(scope)} scan started. It runs in the background — you can keep using the app.`,
       { type: "info" }
     );
 
@@ -698,6 +843,8 @@ async function startScan(root, scope) {
     buttons.forEach(button => {
       button.disabled = false;
     });
+    if (customButton) customButton.disabled = false;
+    if (customInput) customInput.disabled = false;
     if (progress) progress.hidden = true;
   }
 }
@@ -743,7 +890,7 @@ function pollScan(root, scanId) {
       toast(
         failed
           ? `Scan failed: ${scan.error || "unknown error"}`
-          : `${scan.scope === "full" ? "Full" : "Quick"} scan ${cancelled ? "cancelled" : "finished"}: ` +
+          : `${scanLabel(scan.scope)} scan ${cancelled ? "cancelled" : "finished"}: ` +
             `${num(scan.filesScanned)} files, ${num(threats)} threat${threats === 1 ? "" : "s"}.`,
         { type: failed ? "error" : threats ? "info" : "success", timeout: 6000 }
       );
@@ -773,6 +920,39 @@ function scanCoverage(scan) {
   return { blocked, skipped: Number(scan.skipped) || 0 };
 }
 
+function scanLabel(scope) {
+  if (scope === "full") return "Full";
+  if (scope === "custom") return "Path";
+  return "Quick";
+}
+
+function notifyNewThreats(threats, preferences) {
+  const keys = new Set(threats.map(threat => `${threat.scanId}:${threat.id}`));
+
+  if (
+    lastThreatKeys &&
+    preferences?.notify &&
+    typeof Notification !== "undefined" &&
+    Notification.permission === "granted"
+  ) {
+    for (const threat of threats) {
+      const key = `${threat.scanId}:${threat.id}`;
+      if (lastThreatKeys.has(key)) continue;
+
+      try {
+        new Notification("CampusShield flagged a file", {
+          body: `${threat.name} · ${String(threat.severity || "low").toUpperCase()} · ${threat.filePath}`,
+          tag: `campusshield-${key}`
+        });
+      } catch {
+        /* notifications can be unavailable in some shells */
+      }
+    }
+  }
+
+  lastThreatKeys = keys;
+}
+
 function severityTone(severity) {
   if (severity === "critical" || severity === "high") return "high";
   if (severity === "medium") return "medium";
@@ -798,6 +978,7 @@ function threatRow(threat) {
         </span>
       </div>
       <div class="threat-actions">
+        <button class="link" type="button" data-explain="${esc(key)}">Explain</button>
         <button class="btn subtle" type="button" data-quarantine="${esc(key)}">Quarantine</button>
         <button class="link danger-link" type="button" data-delete-threat="${esc(key)}">Delete</button>
       </div>

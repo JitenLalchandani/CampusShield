@@ -2,16 +2,20 @@
 
 const crypto = require("node:crypto");
 const fs = require("node:fs/promises");
+const path = require("node:path");
 
-const { ENGINE_VERSION, LIMITS, scan, scanRoots, scanSingleFile } = require("./engine");
+const { ENGINE_VERSION, LIMITS, scan, scanRoots, scanSingleFile, inspectFile } = require("./engine");
 const { severityWeight } = require("./heuristics");
 const { createQuarantine } = require("./quarantine");
+const { DEFAULT_PREFERENCES, normalizePreferences, nextRunAt, isDue } = require("./preferences");
 const { loadSignatures, refreshSignaturesFromUrl } = require("./signatures");
 const { createWatcher } = require("./watcher");
 
 const PENALTY_CAP = 45;
 const REALTIME_SCAN_ID = "realtime";
 const HISTORY_LIMIT = 50;
+const SCHEDULER_INTERVAL_MS = 30 * 1000;
+const CUSTOM_SCOPE = "custom";
 
 function feedHost(url) {
   if (!url) return "";
@@ -35,25 +39,102 @@ function createScannerService({ store, dataDir, audit, onThreatsChanged }) {
   };
 
   if (remoteFeed.url) {
-    remoteFeed.state = "pending";
-
-    refreshSignaturesFromUrl(signatures, remoteFeed.url)
-      .then(result => {
-        remoteFeed.state = "loaded";
-        remoteFeed.added = result.added;
-        remoteFeed.checkedAt = new Date().toISOString();
-      })
-      .catch(error => {
-        remoteFeed.state = "error";
-        remoteFeed.message = error.message;
-        remoteFeed.checkedAt = new Date().toISOString();
-      });
+    loadRemoteFeed().catch(error => {
+      console.error("Signature feed refresh failed:", error.message);
+    });
   }
 
+  let preferences = normalizePreferences(DEFAULT_PREFERENCES);
+  let preferencesReady = false;
+  let scheduler = null;
   let active = null;
   let watcher = null;
   let watchRoots = [];
   let mutation = Promise.resolve();
+
+  function watchSupported() {
+    return process.platform === "darwin" || process.platform === "win32";
+  }
+
+  async function loadRemoteFeed() {
+    remoteFeed.state = "pending";
+
+    try {
+      const result = await refreshSignaturesFromUrl(signatures, remoteFeed.url);
+      remoteFeed.state = "loaded";
+      remoteFeed.added = result.added;
+      remoteFeed.message = null;
+      remoteFeed.checkedAt = new Date().toISOString();
+      return result;
+    } catch (error) {
+      remoteFeed.state = "error";
+      remoteFeed.message = error.message;
+      remoteFeed.checkedAt = new Date().toISOString();
+      throw error;
+    }
+  }
+
+  const ready = (async () => {
+    try {
+      const stored = typeof store.settings?.get === "function" ? await store.settings.get() : {};
+      preferences = normalizePreferences(stored?.preferences, DEFAULT_PREFERENCES);
+      preferencesReady = true;
+
+      if (preferences.realtime && watchSupported()) {
+        try {
+          await startWatch();
+        } catch (error) {
+          // A stored preference can outlive the folder it watched; scans still work without the watcher.
+          preferences = { ...preferences, realtime: false };
+          await store.settings.save({ preferences });
+          console.error("Real-time protection could not start:", error.message);
+        }
+      }
+    } catch (error) {
+      preferencesReady = true;
+      console.error("Scanner settings load failed:", error.message);
+    }
+  })();
+
+  async function runScheduledScan(now = new Date()) {
+    await ready;
+
+    const schedule = preferences.schedule;
+    if (!isDue(schedule, now) || active) return null;
+
+    preferences = {
+      ...preferences,
+      schedule: { ...schedule, lastRunAt: now.toISOString() }
+    };
+    await store.settings.save({ preferences });
+
+    try {
+      await startScan({ scope: schedule.scope, trigger: "schedule" });
+    } catch (error) {
+      if (error.statusCode === 409) return null;
+      throw error;
+    }
+
+    await audit?.({
+      kind: "scan",
+      message: `Scheduled ${schedule.scope} scan started`,
+      severity: null
+    });
+
+    return { scope: schedule.scope, startedAt: now.toISOString() };
+  }
+
+  function startScheduler() {
+    if (scheduler) return;
+
+    scheduler = setInterval(() => {
+      runScheduledScan().catch(error => console.error("Scheduled scan failed:", error.message));
+    }, SCHEDULER_INTERVAL_MS);
+
+    scheduler.unref?.();
+  }
+
+  startScheduler();
 
   function enqueue(task) {
     const run = mutation.then(task);
@@ -132,6 +213,14 @@ function createScannerService({ store, dataDir, audit, onThreatsChanged }) {
     return Math.min(total, PENALTY_CAP);
   }
 
+  function preferencesView() {
+    return {
+      ...preferences,
+      exclusions: [...preferences.exclusions],
+      schedule: { ...preferences.schedule }
+    };
+  }
+
   function status() {
     return {
       available: true,
@@ -142,30 +231,101 @@ function createScannerService({ store, dataDir, audit, onThreatsChanged }) {
       signatureWarnings: signatures.warnings,
       remoteFeed: { ...remoteFeed, url: feedHost(remoteFeed.url) },
       limits: LIMITS,
+      preferences: preferencesView(),
+      preferencesReady,
+      scheduleNextRunAt: nextRunAt(preferences.schedule),
       active: active
         ? {
             id: active.id,
             scope: active.scope,
+            trigger: active.record.trigger,
             startedAt: active.record.startedAt,
             ...active.progress
           }
         : null,
       watch: watcher ? watcher.status() : { enabled: false, roots: [] },
-      watchSupported: process.platform === "darwin" || process.platform === "win32",
+      watchSupported: watchSupported(),
       realtimeScanId: REALTIME_SCAN_ID
     };
   }
 
-  function startScan({ scope = "quick" } = {}) {
-    if (!LIMITS[scope]) {
-      return Promise.reject(Object.assign(new Error("Scope must be quick or full."), { statusCode: 400 }));
+  function scopeLabel(scope) {
+    if (scope === "full") return "Full";
+    if (scope === CUSTOM_SCOPE) return "Custom";
+    return "Quick";
+  }
+
+  async function scanOneFile(filePath) {
+    const startedAt = new Date().toISOString();
+    const started = Date.now();
+    const result = {
+      engineVersion: ENGINE_VERSION,
+      signatureVersion: signatures.version,
+      signatureCount: signatures.count,
+      scope: CUSTOM_SCOPE,
+      roots: [filePath],
+      startedAt,
+      finishedAt: null,
+      durationMs: 0,
+      filesScanned: 1,
+      bytesScanned: 0,
+      skipped: 0,
+      threats: [],
+      errors: [],
+      truncated: false,
+      stopReason: null
+    };
+
+    try {
+      const inspected = await inspectFile(filePath, signatures);
+
+      if (inspected?.skipped) result.skipped = 1;
+      if (inspected?.threat) result.threats.push(inspected.threat);
+      if (inspected?.size) result.bytesScanned = inspected.size;
+    } catch (error) {
+      result.errors.push({ path: filePath, message: error.message });
+    }
+
+    result.finishedAt = new Date().toISOString();
+    result.durationMs = Date.now() - started;
+    return result;
+  }
+
+  async function startScan({ scope = "quick", target = null, trigger = "manual" } = {}) {
+    if (scope !== CUSTOM_SCOPE && !LIMITS[scope]) {
+      throw Object.assign(new Error("Scope must be quick, full, or custom."), { statusCode: 400 });
     }
 
     if (active) {
-      return Promise.reject(Object.assign(
+      throw Object.assign(
         new Error("A scan is already running. Wait for it to finish or cancel it."),
         { statusCode: 409 }
-      ));
+      );
+    }
+
+    await ready;
+
+    let roots = scope === CUSTOM_SCOPE ? [] : scanRoots(scope);
+    let targetStat = null;
+
+    if (scope === CUSTOM_SCOPE) {
+      if (typeof target !== "string" || !target.trim()) {
+        throw Object.assign(new Error("Choose a folder or file to scan."), { statusCode: 400 });
+      }
+
+      const resolved = path.resolve(target.trim());
+
+      try {
+        targetStat = await fs.stat(resolved);
+      } catch {
+        throw Object.assign(new Error("That folder or file does not exist."), { statusCode: 400 });
+      }
+
+      if (!targetStat.isDirectory() && !targetStat.isFile()) {
+        throw Object.assign(new Error("Only folders and files can be scanned."), { statusCode: 400 });
+      }
+
+      roots = [resolved];
     }
 
     const id = crypto.randomUUID();
@@ -173,6 +333,7 @@ function createScannerService({ store, dataDir, audit, onThreatsChanged }) {
     const record = {
       id,
       scope,
+      trigger,
       status: "running",
       startedAt: new Date().toISOString(),
       finishedAt: null,
@@ -187,8 +348,13 @@ function createScannerService({ store, dataDir, audit, onThreatsChanged }) {
       errors: [],
       truncated: false,
       stopReason: null,
-      roots: scanRoots(scope)
+      roots
     };
+
+    const excludePaths =
+      scope === CUSTOM_SCOPE
+        ? [quarantine.root]
+        : [quarantine.root, ...preferences.exclusions];
 
     active = {
       id,
@@ -202,28 +368,34 @@ function createScannerService({ store, dataDir, audit, onThreatsChanged }) {
       await store.scans.upsert(record);
 
       try {
-        const result = await scan({
-          scope,
-          signatures,
-          signal: controller.signal,
-          excludePaths: [quarantine.root],
-          onProgress: progress => {
-            if (active && active.id === id) active.progress = { ...active.progress, ...progress };
-          }
-        });
+        const result =
+          scope === CUSTOM_SCOPE && targetStat.isFile()
+            ? await scanOneFile(roots[0])
+            : await scan({
+                scope: scope === CUSTOM_SCOPE ? "quick" : scope,
+                signatures,
+                signal: controller.signal,
+                excludePaths,
+                roots,
+                limits: scope === CUSTOM_SCOPE ? LIMITS.full : LIMITS[scope],
+                onProgress: progress => {
+                  if (active && active.id === id) active.progress = { ...active.progress, ...progress };
+                }
+              });
 
         const finished = {
           ...record,
           ...result,
           status: controller.signal.aborted ? "cancelled" : "complete",
           id,
-          scope
+          scope,
+          trigger
         };
 
-        await audit({
+        await audit?.({
           kind: "scan",
           message:
-            `${scope === "full" ? "Full" : "Quick"} file scan: ` +
+            `${scopeLabel(scope)} file scan: ` +
             `${finished.filesScanned} files, ${finished.threats.length} threat${finished.threats.length === 1 ? "" : "s"}` +
             `${finished.truncated ? ` (stopped early: ${finished.stopReason})` : ""}`,
           severity: finished.threats.length ? "MEDIUM" : null
@@ -247,13 +419,13 @@ function createScannerService({ store, dataDir, audit, onThreatsChanged }) {
         if (active && active.id === id) active = null;
 
         await store.scans.upsert(failed);
-        await audit({ kind: "scan", message: `File scan failed: ${error.message}`, severity: "MEDIUM" });
+        await audit?.({ kind: "scan", message: `File scan failed: ${error.message}`, severity: "MEDIUM" });
       }
     })();
 
     run.catch(error => console.error("Scan job error:", error.message));
 
-    return Promise.resolve(decorate(record));
+    return decorate(record);
   }
 
   function cancelScan(id = null) {
@@ -493,12 +665,17 @@ function createScannerService({ store, dataDir, audit, onThreatsChanged }) {
     });
   }
 
-  function startWatch() {
-    if (watcher) {
-      return Promise.resolve(watcher.status());
+  async function startWatch() {
+    if (watcher) return watcher.status();
+
+    if (!watchSupported()) {
+      throw Object.assign(
+        new Error("Real-time protection is available on macOS and Windows only."),
+        { statusCode: 400 }
+      );
     }
 
-    const excludePaths = [quarantine.root];
+    const excludePaths = [quarantine.root, ...preferences.exclusions];
     const roots = scanRoots("quick").filter(Boolean);
 
     const instance = createWatcher({
@@ -508,7 +685,7 @@ function createScannerService({ store, dataDir, audit, onThreatsChanged }) {
         const threat = await scanSingleFile(filePath, signatures);
         if (!threat) return null;
         await recordRealtimeThreat(threat);
-        await audit({
+        await audit?.({
           kind: "detection",
           message: `Real-time watcher flagged ${threat.name} (${threat.severity}) at ${threat.filePath}`,
           severity: "MEDIUM"
@@ -524,16 +701,95 @@ function createScannerService({ store, dataDir, audit, onThreatsChanged }) {
     watcher = instance;
     watchRoots = roots;
 
-    return Promise.resolve(watchStatus);
+    return watchStatus;
   }
 
-  function stopWatch() {
+  async function stopWatch({ persist = true } = {}) {
     if (watcher) {
       watcher.stop();
       watcher = null;
     }
 
-    return Promise.resolve({ enabled: false, roots: watchRoots });
+    if (persist && preferences.realtime) {
+      preferences = { ...preferences, realtime: false };
+      await store.settings.save({ preferences });
+    }
+
+    return { enabled: false, roots: watchRoots };
+  }
+
+  async function configure(patch) {
+    await ready;
+
+    const next = normalizePreferences(patch, preferences);
+
+    if (next.realtime && !watchSupported()) {
+      throw Object.assign(
+        new Error("Real-time protection is available on macOS and Windows only."),
+        { statusCode: 400 }
+      );
+    }
+
+    if (next.schedule.enabled && !next.schedule.lastRunAt) {
+      next.schedule.lastRunAt = new Date().toISOString();
+    }
+
+    preferences = next;
+    await store.settings.save({ preferences });
+
+    if (preferences.realtime && !watcher) {
+      try {
+        await startWatch();
+      } catch (error) {
+        preferences = { ...preferences, realtime: false };
+        await store.settings.save({ preferences });
+        throw Object.assign(
+          new Error(`Real-time protection could not start: ${error.message}`),
+          { statusCode: error.statusCode || 500 }
+        );
+      }
+    } else if (!preferences.realtime && watcher) {
+      await stopWatch({ persist: false });
+    }
+
+    await audit?.({ kind: "settings", message: "Protection settings updated" });
+
+    return preferencesView();
+  }
+
+  async function setRealtime(enabled) {
+    const view = await configure({ realtime: Boolean(enabled) });
+
+    return {
+      enabled: Boolean(watcher),
+      roots: watchRoots,
+      preferences: view
+    };
+  }
+
+  async function updateSignatures() {
+    if (!remoteFeed.url) {
+      throw Object.assign(
+        new Error("No signature feed is configured. Set CAMPUSSHIELD_SIGNATURES_URL and restart."),
+        { statusCode: 400 }
+      );
+    }
+
+    try {
+      const result = await loadRemoteFeed();
+
+      await audit?.({
+        kind: "signatures",
+        message:
+          `Signature update from ${feedHost(remoteFeed.url)}: ` +
+          `${result.added} new hash${result.added === 1 ? "" : "es"} (${signatures.version})`,
+        severity: null
+      });
+
+      return { ...status(), updated: result.added };
+    } catch (error) {
+      throw Object.assign(error, { statusCode: 502 });
+    }
   }
 
   async function reset() {
@@ -542,15 +798,30 @@ function createScannerService({ store, dataDir, audit, onThreatsChanged }) {
     } catch {
       /* no scan running */
     }
-    await stopWatch();
+    await stopWatch({ persist: false });
+    preferences = normalizePreferences(DEFAULT_PREFERENCES);
+    await store.settings.clear?.();
     await store.scans.clear();
     await store.quarantine.clear();
     await quarantine.clear();
     await onThreatsChanged?.();
   }
 
+  async function close() {
+    if (scheduler) {
+      clearInterval(scheduler);
+      scheduler = null;
+    }
+
+    await stopWatch({ persist: false });
+  }
+
   return {
     status,
+    configure,
+    setRealtime,
+    updateSignatures,
+    runScheduledScan,
     listScans,
     getScan,
     startScan,
@@ -565,7 +836,7 @@ function createScannerService({ store, dataDir, audit, onThreatsChanged }) {
     penalty,
     allThreats,
     reset,
-    close: stopWatch
+    close
   };
 }
 

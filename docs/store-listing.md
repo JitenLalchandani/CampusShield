@@ -7,7 +7,8 @@ Play, and Microsoft Store. Replace **[bracketed]** values before submitting.
 > The desktop build scans files with a small local signature set and heuristics; the iOS, Android, and
 > Mac App Store builds cannot scan files because their sandboxes forbid it. Every store has policies
 > against misleading security claims, so each listing below states exactly what that build does. Keep
-> the listing consistent with the app.
+> the listing consistent with the app. If you mention the AI assistant, always state that it only
+> explains findings and never decides whether a file is malicious.
 
 ## Shared basics
 
@@ -146,6 +147,12 @@ Scan Downloads, Desktop, Documents, and launch agents (quick), or your whole hom
 
 REAL-TIME FOLDER WATCH
 Optional user-space watch scans new files as they land in your quick-scan folders. It reports and can quarantine; macOS does not let a user-space app block execution without an Endpoint Security entitlement.
+
+SCHEDULES, EXCLUSIONS, AND CUSTOM SCANS
+Turn on real-time protection, schedule a daily or weekly quick or full scan, exclude folders you never want scanned, or scan one specific folder or file on demand. Desktop notifications and a menu-bar icon keep the app reachable; scheduled scans run only while CampusShield is open.
+
+OPTIONAL AI ASSISTANT
+Connect your own OpenAI-compatible endpoint, including a local Ollama model, to get a plain-language explanation of a finding or a summary of current protection. Your key stays in the app's local storage, remote endpoints must use HTTPS, and the assistant never decides whether a file is malicious — detection is always local.
 ```
 
 **Mac screenshots:** 1280 × 800, 1440 × 900, 2560 × 1600, or 2880 × 1800 (16:10).
@@ -226,7 +233,11 @@ Also included:
 
 The read-only device audit runs in the macOS desktop app, which can check disk encryption, firewall, app verification, system integrity, screen lock, guest account, updates, recent installers, and background login items.
 
-The desktop app also scans files on macOS and Windows: SHA-256 signature matching plus heuristics for disguised file types, hidden executables, content mismatches, and risky script patterns. Findings can be quarantined, restored, or deleted, and an optional user-space folder watch scans new files as they arrive. Mobile builds link into the shared score; they do not scan their own device in this release.
+The desktop app also scans files on macOS and Windows: SHA-256 signature matching plus heuristics for disguised file types, hidden executables, content mismatches, and risky script patterns. Findings can be quarantined, restored, or deleted. Real-time protection watches quick-scan folders as new files arrive; scheduled quick/full scans, folder exclusions, and one-off custom folder scans are built in. The Windows build adds desktop notifications and a tray icon.
+
+An optional AI assistant can explain a finding or summarize your protection state using an OpenAI-compatible endpoint that you supply, including a local model. The assistant is advisory only and never decides what is malicious.
+
+Mobile builds link into the shared score; they do not scan their own device in this release.
 
 The Windows build checks BitLocker, firewall profiles, Microsoft Defender, UAC, inactivity lock, the Guest account, installed-update age, and startup commands, and links into the shared score. Checks that Windows does not allow without administrator rights are shown as unverified rather than guessed.
 
@@ -254,5 +265,7 @@ Capture these states from a real running build (no invented data):
 5. **Link inspector** — a high-risk lookalike domain result.
 6. **Password check** — a breached result showing a count and the k-anonymity note.
 7. **Activity** — device checks, scans, and analyst decisions in one timeline.
+8. **Settings → Protection** — real-time toggle, a scheduled scan with its next run, and one excluded folder.
+9. **AI explanation** — a finding explained in plain language, with the provider name and the "advisory only" note visible.
 
 Add device frames only if the store allows them; keep text legible at thumbnail size.

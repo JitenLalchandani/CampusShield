@@ -2679,6 +2679,67 @@ svg {
   font-size: 12px;
 }
 
+.custom-scan {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.custom-scan .input {
+  flex: 1;
+}
+
+.ai-output {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(57, 213, 255, 0.24);
+  background: rgba(57, 213, 255, 0.05);
+}
+
+.ai-output[data-tone="warn"] {
+  border-color: rgba(255, 184, 76, 0.32);
+  background: rgba(255, 184, 76, 0.07);
+}
+
+.ai-output-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.ai-output-head strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.ai-output-head svg {
+  width: 16px;
+  height: 16px;
+}
+
+.ai-text {
+  margin: 0;
+  color: var(--txt);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.ai-output .helper {
+  margin: 10px 0 0;
+}
+
+.switch input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 @media (max-width: 640px) {
   .threat-item {
     flex-direction: column;

@@ -1,7 +1,7 @@
 "use strict";
 
 const path = require("node:path");
-const { app, BrowserWindow, Menu, session, shell } = require("electron");
+const { app, BrowserWindow, Menu, Tray, nativeImage, session, shell } = require("electron");
 const { start } = require("../src/server");
 
 const APP_NAME = "CampusShield";
@@ -9,6 +9,7 @@ const GITHUB_URL = "https://github.com/JitenLalchandani/CampusShield";
 
 let backend = null;
 let mainWindow = null;
+let tray = null;
 let quitting = false;
 
 app.setName(APP_NAME);
@@ -109,8 +110,7 @@ function buildMenu() {
 async function createWindow() {
   const origin = `http://127.0.0.1:${backend.port}`;
 
-  const win = new BrowserWindow({
-    width: 1360,
+  const win = new BrowserWindow({    width: 1360,
     height: 880,
     minWidth: 960,
     minHeight: 620,
@@ -144,10 +144,62 @@ async function createWindow() {
   return win;
 }
 
+function showWindow() {
+  if (!mainWindow) return;
+
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+async function startQuickScan() {
+  if (!backend) return;
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${backend.port}/api/scans`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ scope: "quick" })
+    });
+
+    showWindow();
+    if (!response.ok) console.error("Tray quick scan was not accepted:", response.status);
+  } catch (error) {
+    console.error("Tray quick scan failed:", error.message);
+    showWindow();
+  }
+}
+
+function createTray() {
+  if (tray) return;
+
+  try {
+    const image = nativeImage.createFromPath(
+      path.join(__dirname, "..", "public", "icons", "icon-192.png")
+    );
+
+    tray = new Tray(image.resize({ width: 18, height: 18 }));
+    tray.setToolTip(APP_NAME);
+    tray.setContextMenu(Menu.buildFromTemplate([
+      { label: "Open CampusShield", click: showWindow },
+      { label: "Run quick scan", click: () => startQuickScan() },
+      { type: "separator" },
+      { label: "Quit", click: () => app.quit() }
+    ]));
+
+    if (process.platform === "win32") tray.on("click", showWindow);
+  } catch (error) {
+    console.error("Tray unavailable:", error.message);
+  }
+}
+
 app.whenReady()
   .then(async () => {
+    if (process.platform === "win32") app.setAppUserModelId("edu.campusshield.desktop");
+
+    // Desktop threat notifications are the only permission this shell grants.
     session.defaultSession.setPermissionRequestHandler(
-      (_webContents, _permission, callback) => callback(false)
+      (_webContents, permission, callback) => callback(permission === "notifications")
     );
 
     backend = await start({
@@ -159,6 +211,7 @@ app.whenReady()
 
     Menu.setApplicationMenu(buildMenu());
     mainWindow = await createWindow();
+    createTray();
 
     app.on("activate", async () => {
       if (BrowserWindow.getAllWindows().length === 0) {

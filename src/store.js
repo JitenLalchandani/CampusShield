@@ -27,7 +27,15 @@ async function createStore({ mongoUri, dataDir }) {
 
 function createJsonStore(dir) {
   const file = path.join(dir, "store.json");
-  const state = { events: [], actions: [], audit: [], devices: [], scans: [], quarantine: [] };
+  const state = {
+    events: [],
+    actions: [],
+    audit: [],
+    devices: [],
+    scans: [],
+    quarantine: [],
+    settings: {}
+  };
   let loading = null;
   let writes = Promise.resolve();
 
@@ -48,6 +56,10 @@ function createJsonStore(dir) {
           state.devices = Array.isArray(parsed.devices) ? parsed.devices : [];
           state.scans = Array.isArray(parsed.scans) ? parsed.scans : [];
           state.quarantine = Array.isArray(parsed.quarantine) ? parsed.quarantine : [];
+          state.settings =
+            parsed.settings && typeof parsed.settings === "object" && !Array.isArray(parsed.settings)
+              ? parsed.settings
+              : {};
         }
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
@@ -279,6 +291,25 @@ function createJsonStore(dir) {
       }
     },
 
+    settings: {
+      async get() {
+        await load();
+        return copy(state.settings);
+      },
+      async save(patch) {
+        await load();
+        state.settings = { ...state.settings, ...copy(patch) };
+        await persist();
+        return copy(state.settings);
+      },
+      async clear() {
+        await load();
+        state.settings = {};
+        await persist();
+        return true;
+      }
+    },
+
     async close() {}
   };
 }
@@ -292,6 +323,7 @@ function createMongoStore(uri) {
   let devices;
   let scans;
   let quarantine;
+  let settings;
 
   return {
     kind: "mongodb",
@@ -312,6 +344,7 @@ function createMongoStore(uri) {
       devices = db.collection("devices");
       scans = db.collection("scans");
       quarantine = db.collection("quarantine");
+      settings = db.collection("settings");
 
       await Promise.all([
         events.createIndex({ id: 1 }, { unique: true }),
@@ -459,6 +492,27 @@ function createMongoStore(uri) {
       async clear() {
         const result = await quarantine.deleteMany({});
         return result.deletedCount;
+      }
+    },
+
+    settings: {
+      async get() {
+        const doc = await settings.findOne({ _id: "scanner" });
+        if (!doc) return {};
+        const { _id, ...rest } = doc;
+        return rest;
+      },
+      async save(patch) {
+        await settings.updateOne(
+          { _id: "scanner" },
+          { $set: patch },
+          { upsert: true }
+        );
+        return this.get();
+      },
+      async clear() {
+        await settings.deleteOne({ _id: "scanner" });
+        return true;
       }
     },
 

@@ -16,10 +16,12 @@ score, and every finding shows what was actually read.
 | Classic antivirus | CampusShield |
 | --- | --- |
 | Signature/behaviour scanning of files | Both: local file scanning **and** read-only posture checks |
+| Real-time protection toggle, scheduled scans, exclusions, custom folder scans | Same controls, persisted in Settings |
 | One machine at a time | One shared score across linked computers, phones, and tablets |
 | Opaque "risk" number | Every point is explained: rule, weight, evidence, fix |
 | Background drivers and kernel extensions (real-time blocking) | User-space folder watch that scans new files but cannot block execution |
 | Account and cloud sync | Local-first storage with an optional self-hosted MongoDB |
+| Built-in chatbot bolted on | Optional assistant you point at your own OpenAI-compatible endpoint; it explains findings and never makes detection decisions |
 
 CampusShield is **not a full antivirus**. The desktop build scans files against a small local
 signature set plus heuristics, and its real-time watch runs in the user session, so the OS does not
@@ -39,8 +41,16 @@ each store version can promise.
   encoded PowerShell, reverse shells, and security-tampering commands.
 - **Quarantine** — move a finding into the app vault, restore it to its original path, or delete it.
   Quarantined and deleted files stop counting against the score.
-- **Real-time folder watch** — `fs.watch` on the quick-scan folders scans new files as they appear.
-  It runs in the user session: it can report and quarantine, but it cannot block execution.
+- **Real-time protection** — a persisted toggle for the folder watch. `fs.watch` on the quick-scan
+  folders scans new files as they appear and can toast a desktop notification. It runs in the user
+  session: it can report and quarantine, but it cannot block execution.
+- **Scheduled scans** — daily or weekly quick/full scans at a chosen time, with the next run shown in
+  the UI. The scheduler is in-process, so a scan only starts while CampusShield is running.
+- **Exclusions and custom scans** — exclude folders from automated scans, or scan one specific folder
+  or file on demand. An explicit custom scan always runs, even inside an excluded folder.
+- **Desktop notifications and tray** — the Electron build shows a notification for new findings, keeps
+  a tray/menu-bar icon with Open, Run quick scan, and Quit, and asks for notification permission only
+  when you enable it.
 - **macOS device audit** — FileVault, Application Firewall, Gatekeeper, SIP, screen lock, guest account,
   automatic updates, pending macOS updates, Downloads installers/scripts, and third-party login items.
 - **Windows device audit** — BitLocker, firewall profiles, Microsoft Defender real-time state and
@@ -48,8 +58,13 @@ each store version can promise.
   commands, and Downloads installers/scripts. Unreadable values stay "Unverified".
 - **API access tokens** — optional shared-secret access for a self-hosted deployment: one full-access
   token and one read-only token, entered once in Settings. No per-user accounts or audit of callers.
-- **Signature feeds** — the built-in set plus a local JSON feed and/or an HTTPS feed fetched at startup;
-  the Protection view reports how many hashes a feed added or why it failed.
+- **Signature feeds** — the built-in set plus a local JSON feed and/or an HTTPS feed fetched at startup
+  and on demand from Settings; the UI reports how many hashes a feed added or why it failed.
+- **AI assistant (optional)** — connect any OpenAI-compatible endpoint (OpenAI, Azure OpenAI, OpenRouter,
+  Groq, or a local Ollama) to get a plain-language explanation of one finding or a summary of current
+  protection. The key stays in browser local storage and is sent per request; remote endpoints must be
+  HTTPS. The assistant is advisory only: detections are always produced by the local scanner, never by
+  the model.
 - **Explainable scoring** — start at 100; critical −30, high −18, medium −10, low −4; unverified checks
   cost nothing but stay visible; open malware findings use the same weights, capped at 45 per device.
 - **Link inspector** — client-side heuristics for plain HTTP, embedded credentials, raw IP hosts,
@@ -72,6 +87,9 @@ each store version can promise.
 | File scanning (quick/full) | Yes | No (sandbox) | No | Yes (same engine) |
 | Quarantine and restore | Yes | No | No | Yes |
 | Real-time folder watch | Yes (user space) | No | No | Yes (user space) |
+| Scheduled / custom scans and exclusions | Yes | No | No | Yes |
+| Desktop notifications, tray | Yes | No | No | Yes |
+| AI explanation (optional endpoint) | Yes | Yes | Yes | Yes |
 | Cross-device score | Yes | Linked only | Linked only | Yes |
 | Link inspector | Yes | Yes | Yes | Yes |
 | Breached-password check | Yes | Yes (HTTPS) | Yes (HTTPS) | Yes |
@@ -93,20 +111,22 @@ public/                Single-page app (vanilla ES modules, hash router, no bund
   sw.js                offline shell cache (bypasses /api)
 src/
   server.js            Express API + static hosting + SPA fallback
-  store.js             MongoDB or local JSON persistence (events, actions, audit, devices, scans, quarantine)
+  ai.js                optional OpenAI-compatible assistant proxy (never detects)
+  store.js             MongoDB or local JSON persistence (events, actions, audit, devices, scans, quarantine, settings)
   deviceAudit.js       read-only macOS posture checks and scoring
   localScanner.js      macOS Unified Log indicator scanner
   scanner/
     engine.js          directory walk, SHA-256 hashing, scan budgets
     signatures.js      built-in signature set + optional trusted feed
     heuristics.js      file-type, naming, and script-pattern rules
+    preferences.js     persisted AV settings, exclusions, schedule math
     quarantine.js      encrypted-location vault (files moved, chmod 0600)
     watcher.js         user-space real-time folder watch
-    manager.js         scan jobs, progress, quarantine actions, watch lifecycle
-electron/              Desktop main process and preload bridge
+    manager.js         scan jobs, scheduler, progress, quarantine actions, watch lifecycle
+electron/              Desktop main process (tray, notifications) and preload bridge
 ios/ android/          Capacitor native projects
 build/                 Desktop packaging icons
-tests/                 node:test unit tests for the scanner
+tests/                 node:test unit tests for the scanner, preferences, manager, and AI guard
 docs/                  Store submission assets
 ```
 
@@ -141,7 +161,22 @@ CORS_ORIGIN=https://your-frontend.example
 The built-in signature set contains only the EICAR test file, so a fresh install cannot claim to know
 real malware. Point `CAMPUSSHIELD_SIGNATURES` at a trusted local feed, or `CAMPUSSHIELD_SIGNATURES_URL`
 at an HTTPS JSON feed (`{"version":"…","entries":[{"sha256":"…","name":"…","severity":"high"}]}`) that
-is merged at startup. Feeds larger than 5 MB are rejected.
+is merged at startup and can be refreshed from **Settings → Update signatures**. Feeds larger than 5 MB
+are rejected.
+
+Protection preferences are saved by the server, not the browser: the real-time toggle, notifications,
+exclusions, and the daily/weekly schedule are stored in the data store under `settings.preferences`, so
+they survive a restart and apply to the desktop app and a self-hosted deployment alike. The scheduler
+runs inside the server process, which means a scheduled scan starts only while CampusShield is open;
+there is no OS service or background daemon.
+
+The AI assistant is optional and off until you configure it. In **Settings → AI assistant**, enter an
+OpenAI-compatible base URL (for example `https://api.openai.com/v1`), a model, and a key. The key is
+kept in browser local storage and sent only to the CampusShield server with each AI request; it is never
+written to the data store. Remote endpoints must be HTTPS; plain HTTP is allowed only for localhost, so
+a local Ollama works. The server forwards the request to `/chat/completions` with a 30-second timeout.
+Nothing is sent until you press **Explain** or **Summary**, and the assistant cannot create, confirm, or
+clear a detection.
 
 When either API token is set, every `/api` route except `/api/health` requires
 `Authorization: Bearer <token>` or `X-Api-Token`. The admin token can read and change data; the view
@@ -189,8 +224,10 @@ is configured. For LAN development over plain HTTP:
 | `GET` | `/api/summary` | Counts, severity mix, 7-day volume, device total, rules version |
 | `GET` | `/api/protection` | Devices, cross-device summary, scanner status, recent scans, quarantine |
 | `POST` | `/api/protection/scan` | Run read-only host checks (macOS; `501` elsewhere) |
-| `GET` | `/api/scanner` | Engine version, signature set, active scan, watch status |
-| `POST` | `/api/scans` | `{"scope":"quick"\|"full"}` — start a background file scan (`202`) |
+| `GET` | `/api/scanner` | Engine version, signature set, active scan, watch status, preferences, next scheduled run |
+| `PATCH` | `/api/scanner/settings` | `{"preferences":{…}}` — real-time, notifications, exclusions, schedule |
+| `POST` | `/api/scanner/signatures/update` | Re-fetch the configured HTTPS signature feed |
+| `POST` | `/api/scans` | `{"scope":"quick"\|"full"}` or `{"scope":"custom","path":"/some/folder"}` — start a background scan (`202`) |
 | `GET` | `/api/scans` | Recent scans, newest first |
 | `GET` | `/api/scans/:id` | One scan with live progress while it runs |
 | `POST` | `/api/scans/:id/cancel` | Cancel the running scan |
@@ -199,7 +236,10 @@ is configured. For LAN development over plain HTTP:
 | `GET` | `/api/quarantine` | Files held in the vault |
 | `POST` | `/api/quarantine/:id/restore` | Put a held file back where it came from |
 | `DELETE` | `/api/quarantine/:id` | Delete a held file permanently |
-| `POST` | `/api/scanner/watch` | `{"enabled":true\|false}` — start or stop the real-time folder watch |
+| `POST` | `/api/scanner/watch` | `{"enabled":true\|false}` — start or stop real-time protection |
+| `POST` | `/api/ai/test` | Validate an endpoint/model/key pair without storing it |
+| `POST` | `/api/ai/explain` | `{"config":{…},"scanId":"…","threatId":"…"}` — plain-language finding explanation |
+| `POST` | `/api/ai/summary` | `{"config":{…}}` — advisory summary of current protection state |
 | `GET` | `/api/devices` | Linked devices |
 | `POST` | `/api/devices` | `{"name":"…","kind":"phone|tablet|computer|browser","platform":"ios|android|darwin|win32|linux|web","source":"web|native|electron"}` |
 | `DELETE` | `/api/devices/:id` | Remove a device from the shared score |
@@ -242,6 +282,10 @@ localhost.
 - The link inspector runs entirely in the browser and never fetches the inspected URL.
 - The password check sends only a five-character SHA-1 prefix to
   `api.pwnedpasswords.com`; see [docs/privacy-policy.md](docs/privacy-policy.md).
+- The optional AI assistant sends data only when you press **Explain** or **Summary**: the finding's
+  name, severity, and matched reasons, or a summary of scan counts and your own endpoint. File contents
+  are never sent, full folder paths are shortened to their parent folder name in the summary, and the
+  API key stays in browser local storage. Nothing is sent to the developer.
 - This build has no accounts, ads, or analytics.
 
 ## Limits
@@ -260,6 +304,10 @@ localhost.
   Access** (System Settings → Privacy & Security). Without it a scan completes over only the files it
   can read and the Protection view says so instead of reporting a clean result.
 - Detection is a small, illustrative rule set — not a validated detection engine.
+- The AI assistant is advisory. It explains or summarizes what the scanner already found, can be wrong,
+  and never influences detection, scoring, or quarantine.
+- Scheduled scans run only while the app/server process is open; there is no background service, so a
+  missed schedule waits for the next launch instead of running silently.
 - Containment records a status only; no device, account, or network state is changed.
 - API access is a shared secret, not user accounts: no per-user roles, sessions, or caller audit.
   Without a token the server is open to anyone who can reach it.

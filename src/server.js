@@ -8,6 +8,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const { createStore } = require("./store");
 const { createScannerService } = require("./scanner/manager");
+const ai = require("./ai");
 
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
 const ACTIONS = ["Investigate", "Contain", "Reopen"];
@@ -325,7 +326,7 @@ function createApp({ store, dataDir }) {
       if (isLocalShell || allowedOrigins.has(origin)) {
         res.setHeader("Access-Control-Allow-Origin", origin);
         res.setHeader("Vary", "Origin");
-        res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
+        res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
         res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Api-Token");
       }
     }
@@ -380,7 +381,7 @@ function createApp({ store, dataDir }) {
       version,
       platform: process.platform,
       platformLabel: platformLabel(process.platform),
-      scannerAvailable: process.platform === "darwin",
+      scannerAvailable: process.platform === "darwin" || process.platform === "win32",
       deviceAuditAvailable: deviceAuditAvailable(),
       authRequired,
       fileScanner: {
@@ -428,7 +429,7 @@ function createApp({ store, dataDir }) {
       storage: storageLabel(store),
       platform: process.platform,
       platformLabel: platformLabel(process.platform),
-      scannerAvailable: process.platform === "darwin",
+      scannerAvailable: process.platform === "darwin" || process.platform === "win32",
       deviceAuditAvailable: deviceAuditAvailable(),
       rulesVersion: RULES_VERSION,
       dataSource: dataSourceLabel(store)
@@ -541,10 +542,28 @@ function createApp({ store, dataDir }) {
     res.json({ ...status, scans, quarantine });
   });
 
+  app.patch("/api/scanner/settings", async (req, res, next) => {
+    try {
+      const preferences = await scanner.configure(req.body || {});
+      return res.json({ preferences, scanner: scanner.status() });
+    } catch (error) {
+      return sendError(res, next, error);
+    }
+  });
+
+  app.post("/api/scanner/signatures/update", async (_req, res, next) => {
+    try {
+      return res.json(await scanner.updateSignatures());
+    } catch (error) {
+      return sendError(res, next, error);
+    }
+  });
+
   app.post("/api/scans", async (req, res, next) => {
     try {
       const scope = text(req.body?.scope, 10) || "quick";
-      const scan = await scanner.startScan({ scope });
+      const target = scope === "custom" ? text(req.body?.path, 1024) : null;
+      const scan = await scanner.startScan({ scope, target });
       return res.status(202).json({ scan });
     } catch (error) {
       return sendError(res, next, error);
@@ -619,7 +638,7 @@ function createApp({ store, dataDir }) {
   app.post("/api/scanner/watch", async (req, res, next) => {
     try {
       const enabled = req.body?.enabled !== false;
-      const watch = enabled ? await scanner.startWatch() : await scanner.stopWatch();
+      const watch = await scanner.setRealtime(enabled);
 
       await auditEntry(store, {
         kind: "admin",
@@ -627,6 +646,116 @@ function createApp({ store, dataDir }) {
       });
 
       return res.json({ watch });
+    } catch (error) {
+      return sendError(res, next, error);
+    }
+  });
+
+  // Optional bring-your-own-key assistant. Requests go straight to the configured
+  // OpenAI-compatible endpoint; nothing is stored server-side.
+  app.post("/api/ai/test", async (req, res, next) => {
+    try {
+      const config = ai.normalizeConfig(req.body);
+
+      await auditEntry(store, {
+        kind: "ai",
+        message: `AI connection tested against ${new URL(config.baseUrl).hostname}`
+      });
+
+      const result = await ai.testConnection(config);
+      return res.json({ ok: true, ...result, disclaimer: ai.DISCLAIMER });
+    } catch (error) {
+      return sendError(res, next, error);
+    }
+  });
+
+  app.post("/api/ai/explain", async (req, res, next) => {
+    try {
+      const config = ai.normalizeConfig(req.body);
+      const scanId = text(req.body?.scanId, 100);
+      const threatId = text(req.body?.threatId, 100);
+      const scan = scanId ? await store.scans.get(scanId) : null;
+      const threat = scan?.threats?.find(item => item.id === threatId);
+
+      if (!scan || !threat) {
+        return res.status(404).json({ error: "Threat not found." });
+      }
+
+      const result = await ai.explainThreat(config, threat);
+
+      await auditEntry(store, {
+        kind: "ai",
+        message: `AI explanation requested for ${threat.name} (${threat.severity})`
+      });
+
+      return res.json({ ...result, disclaimer: ai.DISCLAIMER });
+    } catch (error) {
+      return sendError(res, next, error);
+    }
+  });
+
+  app.post("/api/ai/summary", async (req, res, next) => {
+    try {
+      const config = ai.normalizeConfig(req.body);
+      const [devices, scans, status] = await Promise.all([
+        store.devices.all().then(items => items.map(publicDoc)),
+        scanner.listScans(5),
+        scanner.status()
+      ]);
+
+      const openThreats = [];
+
+      for (const scan of scans) {
+        for (const threat of scan.threats || []) {
+          if (threat.status !== "detected") continue;
+
+          openThreats.push({
+            name: String(threat.name || "").slice(0, 200),
+            severity: threat.severity,
+            reasons: (threat.reasons || []).slice(0, 4),
+            folder: path.basename(path.dirname(String(threat.filePath || "")))
+          });
+
+          if (openThreats.length >= 20) break;
+        }
+        if (openThreats.length >= 20) break;
+      }
+
+      const context = {
+        generatedAt: new Date().toISOString(),
+        platform: platformLabel(process.platform),
+        protection: protectionSummary(devices),
+        devices: devices.map(device => ({
+          name: device.name,
+          platform: device.platformLabel,
+          kind: device.kind,
+          score: Number.isFinite(device.score) ? device.score : null,
+          grade: device.grade,
+          summary: device.summary || null
+        })),
+        scanner: {
+          signatureVersion: status.signatureVersion,
+          signatureCount: status.signatureCount,
+          realtime: Boolean(status.watch?.enabled),
+          schedule: status.preferences.schedule,
+          exclusions: status.preferences.exclusions.length
+        },
+        scans: scans.map(scan => ({
+          scope: scan.scope,
+          status: scan.status,
+          filesScanned: scan.filesScanned,
+          threatCount: scan.threatCount,
+          truncated: Boolean(scan.truncated),
+          finishedAt: scan.finishedAt
+        })),
+        openThreats
+      };
+
+      const result = await ai.summarize(config, context);
+
+      await auditEntry(store, { kind: "ai", message: "AI summary requested" });
+
+      return res.json({ ...result, disclaimer: ai.DISCLAIMER });
     } catch (error) {
       return sendError(res, next, error);
     }
@@ -1002,7 +1131,7 @@ function createApp({ store, dataDir }) {
     });
 
     res.json({
-      message: "Events, actions, devices, scans, quarantined files, and audit history cleared",
+      message: "Events, actions, devices, scans, quarantined files, protection settings, and audit history cleared",
       total: 0,
       deletedEvents,
       deletedActions,
@@ -1074,9 +1203,14 @@ async function start(options = {}) {
       `Storage: ${storageLabel(store)}${store.location ? ` (${store.location})` : ""}`
     );
     console.log(
+      deviceAuditAvailable()
+        ? `Device posture checks: available on ${platformLabel(process.platform)}`
+        : `Device posture checks: unavailable on ${platformLabel(process.platform)}`
+    );
+    console.log(
       process.platform === "darwin"
-        ? "Local macOS log scanning and device checks: available"
-        : "Local macOS log scanning and device checks: unavailable on this platform"
+        ? "Local macOS log scanning: available"
+        : "Local macOS log scanning: unavailable on this platform"
     );
     console.log("No sample events are loaded. No live SIEM is connected.");
   }

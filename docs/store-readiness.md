@@ -196,6 +196,7 @@ re-check before every submission). `minSdkVersion` is 24.
 | Misrepresentation / deceptive claims | Listing implies full antivirus protection | Copy says desktop scanning uses a small local signature set and a user-space watch; mobile builds cannot scan; app repeats the limit |
 | Device and Network Abuse | File scanning might appear to inspect other people's devices | Scanning reads only the host running its own server, with the operator's consent; the watch covers that host's own user folders; no remote device access |
 | User Data | Data sent to a self-hosted server | Disclose in privacy policy and data safety; no developer collection |
+| Third-party AI | The optional assistant forwards findings to a provider the user chooses | Off by default; user supplies endpoint and key; key stays in local storage; notification permission requested only when notifications are enabled |
 | Stalkerware | "Monitor devices" framing | Never market it as monitoring someone else; the queue is analyst triage of approved events |
 
 ## 6. Microsoft Store

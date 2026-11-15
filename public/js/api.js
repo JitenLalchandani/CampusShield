@@ -1,6 +1,7 @@
 const BASE_KEY = "campusshield.apiBase";
 const TOKEN_KEY = "campusshield.apiToken";
 const SETTINGS_KEY = "campusshield.settings";
+const AI_KEY = "campusshield.ai";
 
 const DEFAULT_SETTINGS = {
   autoRefresh: true,
@@ -144,6 +145,40 @@ export function saveSettings(patch) {
   }
 
   return next;
+}
+
+export function getAiConfig() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(AI_KEY) || "{}");
+    return {
+      baseUrl: String(parsed.baseUrl || "").trim(),
+      model: String(parsed.model || "").trim(),
+      apiKey: String(parsed.apiKey || "").trim()
+    };
+  } catch {
+    return { baseUrl: "", model: "", apiKey: "" };
+  }
+}
+
+export function setAiConfig(value) {
+  const next = {
+    baseUrl: String(value?.baseUrl || "").trim(),
+    model: String(value?.model || "").trim(),
+    apiKey: String(value?.apiKey || "").trim()
+  };
+
+  try {
+    localStorage.setItem(AI_KEY, JSON.stringify(next));
+  } catch {
+    /* ignore storage failures */
+  }
+
+  return next;
+}
+
+export function isAiConfigured() {
+  const config = getAiConfig();
+  return Boolean(config.baseUrl && config.model);
 }
 
 export function isNativeShell() {
