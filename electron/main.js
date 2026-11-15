@@ -107,10 +107,23 @@ function buildMenu() {
   ]);
 }
 
+async function appStartUrl(origin) {
+  try {
+    const response = await fetch(`${origin}/app/`, { signal: AbortSignal.timeout(2500) });
+    if (response.ok) return `${origin}/app/`;
+  } catch {
+    /* fall back to the website shell */
+  }
+
+  return origin;
+}
+
 async function createWindow() {
   const origin = `http://127.0.0.1:${backend.port}`;
+  const startUrl = await appStartUrl(origin);
 
-  const win = new BrowserWindow({    width: 1360,
+  const win = new BrowserWindow({
+    width: 1360,
     height: 880,
     minWidth: 960,
     minHeight: 620,
@@ -140,7 +153,7 @@ async function createWindow() {
     }
   });
 
-  await win.loadURL(origin);
+  await win.loadURL(startUrl);
   return win;
 }
 

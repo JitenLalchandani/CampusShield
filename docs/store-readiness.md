@@ -253,6 +253,26 @@ posture coverage in the listing, and keep the "Unverified" wording when a cmdlet
 This table belongs in the listing copy and review notes. Overstating coverage is the fastest route to a
 rejection or a refund request.
 
+### Flutter client
+
+`flutter_app/` is the cross-platform application UI and is the intended native app on macOS, iOS, and
+Android. What is true today:
+
+- The web build is compiled here and served by CampusShield itself at `/app`. CanvasKit is self-hosted
+  and the page carries its own CSP; the only third-party request is the Roboto font from Google Fonts.
+- The macOS, iOS, and Android runners are committed with the permissions each one needs
+  (`network.client` on macOS, `INTERNET` plus debug-only cleartext on Android, `NSAllowsLocalNetworking`
+  on iOS). This machine has no Xcode and no Android SDK, so none of those builds has been compiled
+  here; a store upload still needs a Mac with Xcode plus a signing team, or the Android SDK and Java.
+- The Flutter client delivers the same mobile capabilities as the Capacitor shells: it links into the
+  shared score and does not scan the phone's own files.
+- `flutter analyze` and `flutter test` pass. `test/shell_test.dart` renders the shell from recorded API
+  payloads at desktop and phone widths, which catches layout overflows and API parsing regressions
+  without a native toolchain.
+
+The Capacitor projects (`ios/`, `android/`) still wrap the same website. Submit one client per store so
+the review matches the build.
+
 ## 8. Assets checklist
 
 | Asset | Status |

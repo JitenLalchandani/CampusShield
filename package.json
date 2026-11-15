@@ -12,6 +12,9 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "test": "node --test tests/*.test.js",
+    "flutter:get": "cd flutter_app && flutter pub get",
+    "flutter:web": "cd flutter_app && flutter build web --release --base-href /app/",
+    "flutter:analyze": "cd flutter_app && flutter analyze",
     "electron": "electron .",
     "cap:sync": "cap sync",
     "cap:ios": "cap open ios",
@@ -43,6 +46,7 @@
       "electron/**/*",
       "src/**/*",
       "public/**/*",
+      "flutter_app/build/web/**/*",
       "package.json"
     ],
     "asar": true,

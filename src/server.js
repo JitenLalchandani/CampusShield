@@ -5,6 +5,7 @@ require("dotenv").config();
 const express = require("express");
 const os = require("node:os");
 const path = require("node:path");
+const fs = require("node:fs");
 const crypto = require("node:crypto");
 const { createStore } = require("./store");
 const { createScannerService } = require("./scanner/manager");
@@ -1143,6 +1144,53 @@ function createApp({ store, dataDir }) {
   app.use("/api", (_req, res) => {
     res.status(404).json({ error: "API route not found" });
   });
+
+  const flutterDir = path.join(__dirname, "..", "flutter_app", "build", "web");
+  const flutterBuilt = fs.existsSync(path.join(flutterDir, "index.html"));
+
+  // CanvasKit compiles WebAssembly, so the renderer needs 'wasm-unsafe-eval'. The app connects to a
+  // server the operator chooses, which may be plain HTTP on a LAN, so connect-src stays open.
+  const flutterCsp = [
+    "default-src 'self'",
+    "script-src 'self' 'wasm-unsafe-eval'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "font-src 'self' https://fonts.gstatic.com",
+    "connect-src 'self' http: https:",
+    "worker-src 'self' blob:",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'"
+  ].join("; ");
+
+  app.use("/app", (_req, res, next) => {
+    res.setHeader("Content-Security-Policy", flutterCsp);
+    next();
+  });
+
+  app.get(["/app", "/app/*"], (req, res, next) => {
+    if (flutterBuilt) return next();
+    return res.status(503).type("text/plain").send(
+      "The Flutter app has not been built yet. Run `npm run flutter:web`, then restart the server."
+    );
+  });
+
+  if (flutterBuilt) {
+    app.use(
+      "/app",
+      express.static(flutterDir, {
+        setHeaders(res, filePath) {
+          if (filePath.endsWith(".html") || filePath.endsWith(".js")) {
+            res.setHeader("Cache-Control", "no-cache");
+          }
+        }
+      })
+    );
+
+    app.get(["/app", "/app/*"], (_req, res) => {
+      res.sendFile(path.join(flutterDir, "index.html"));
+    });
+  }
 
   app.use(
     express.static(PUBLIC_DIR, {

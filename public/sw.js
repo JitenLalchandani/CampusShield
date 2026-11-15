@@ -1,4 +1,4 @@
-const VERSION = "campusshield-v6";
+const VERSION = "campusshield-v7";
 
 const SHELL = [
   "/",
@@ -48,6 +48,7 @@ self.addEventListener("fetch", event => {
 
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/")) return;
+  if (url.pathname === "/app" || url.pathname.startsWith("/app/")) return;
 
   event.respondWith(handle(request));
 });

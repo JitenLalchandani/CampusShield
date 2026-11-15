@@ -78,6 +78,9 @@ each store version can promise.
 - **Coverage** — an honest map of what is collected and what is not.
 - **Storage** — MongoDB Atlas when `MONGODB_URI` is set, otherwise a zero-config local JSON store.
 - **PWA, Electron, Capacitor** — installable web app, embedded-server desktop app, and native shells.
+- **Flutter application** — the same API in a Flutter client (`flutter_app/`) with protection, scans,
+  threats, quarantine, activity, coverage, and settings. It builds for web (served at `/app`), macOS,
+  iOS, and Android using the standard Flutter toolchains.
 
 ## Platform coverage
 
@@ -94,6 +97,7 @@ each store version can promise.
 | Link inspector | Yes | Yes | Yes | Yes |
 | Breached-password check | Yes | Yes (HTTPS) | Yes (HTTPS) | Yes |
 | Campus threat queue | Yes | With server URL | With server URL | With server URL |
+| Flutter client | Yes (web + native) | Yes (links only) | Yes (links only) | Yes (web + native) |
 
 Native phone checks require platform plugins (DeviceCheck/Keychain posture on iOS, Play Integrity and
 settings intents on Android). Until those exist, the mobile builds link into the score without
@@ -103,12 +107,16 @@ App Store Guideline 2.5.1 forbids one app from inspecting another app's files.
 ## Architecture
 
 ```
-public/                Single-page app (vanilla ES modules, hash router, no bundler)
+public/                Single-page website (vanilla ES modules, hash router, no bundler)
   js/views/            protection, threats, activity, coverage, settings
   js/tools.js          link heuristics + Pwned Passwords k-anonymity client
   js/ui.js             icons, formatting, toasts, empty states
   css/app.css          design system
-  sw.js                offline shell cache (bypasses /api)
+  sw.js                offline shell cache (bypasses /api and /app)
+flutter_app/           Flutter application client (web, macOS, iOS, Android)
+  lib/                 models, API client, state, screens, theme
+  test/                Flutter unit tests plus widget tests that render the shell from API fixtures
+  web/                 Flutter web shell and bootstrap (self-hosted CanvasKit), served by Express at /app
 src/
   server.js            Express API + static hosting + SPA fallback
   ai.js                optional OpenAI-compatible assistant proxy (never detects)
@@ -144,6 +152,19 @@ npm start
 
 Open http://localhost:3000. Without a `.env` file the app uses `data/store.json` and starts with no
 events and no devices.
+
+The Flutter client is served from the same server. With the Flutter SDK installed:
+
+```bash
+npm run flutter:get     # resolve Dart packages
+npm run flutter:web     # build to flutter_app/build/web
+npm start               # restart the server
+```
+
+Then open http://localhost:3000/app. The build is embedded at `/app`; the website at `/` is unchanged.
+If the Flutter build is missing, `/app` returns a message instead of failing silently. The build loads
+CanvasKit from `/app/canvaskit/` (set in `flutter_app/web/flutter_bootstrap.js`), so the renderer is
+served by your own server; the only third-party request is the Roboto font from Google Fonts.
 
 Optional `.env`:
 
@@ -200,6 +221,34 @@ The desktop app keeps data in the OS app-data directory
 (`~/Library/Application Support/CampusShield/data` on macOS). Builds are unsigned: macOS Gatekeeper
 warns until the app is signed with a Developer ID certificate and notarized.
 
+### Flutter application
+
+The Flutter client in `flutter_app/` is the cross-platform application UI. It talks to the same API, so
+it works with the embedded desktop server or a self-hosted deployment.
+
+```bash
+cd flutter_app
+flutter pub get
+flutter analyze            # no issues
+flutter test               # unit + widget tests
+flutter run -d macos       # requires Xcode
+flutter run -d chrome      # requires Chrome; the website build is already served at /app
+flutter build macos        # requires Xcode
+flutter build apk          # requires Android SDK and Java
+flutter build ios          # requires Xcode and a signing team
+```
+
+`npm run flutter:web` produces the web build served at `/app`, so `flutter run -d chrome` is only needed
+while developing the client itself.
+
+Platform folders (`web/`, `macos/`, `ios/`, `android/`) are committed with the permissions the client
+needs: `com.apple.security.network.client` on macOS, `INTERNET` plus debug-only cleartext traffic on
+Android, and `NSAllowsLocalNetworking` on iOS so the app can reach a server on your own network. The
+native builds still require Xcode or the Android SDK, neither of which exists on this machine, so only
+the web build is compiled here. `flutter_app/test/shell_test.dart` renders the shell against recorded API
+payloads (`test/fixtures/`) at desktop and phone widths, which catches layout overflows and broken API
+parsing without a native toolchain.
+
 ## Mobile app (Capacitor)
 
 ```bash
@@ -225,7 +274,7 @@ is configured. For LAN development over plain HTTP:
 | `GET` | `/api/protection` | Devices, cross-device summary, scanner status, recent scans, quarantine |
 | `POST` | `/api/protection/scan` | Run read-only host checks (macOS; `501` elsewhere) |
 | `GET` | `/api/scanner` | Engine version, signature set, active scan, watch status, preferences, next scheduled run |
-| `PATCH` | `/api/scanner/settings` | `{"preferences":{…}}` — real-time, notifications, exclusions, schedule |
+| `PATCH` | `/api/scanner/settings` | Flat preferences body: `{"realtime":true,"notify":true,"exclusions":[],"schedule":{…}}` |
 | `POST` | `/api/scanner/signatures/update` | Re-fetch the configured HTTPS signature feed |
 | `POST` | `/api/scans` | `{"scope":"quick"\|"full"}` or `{"scope":"custom","path":"/some/folder"}` — start a background scan (`202`) |
 | `GET` | `/api/scans` | Recent scans, newest first |
