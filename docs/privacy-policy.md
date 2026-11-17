@@ -1,7 +1,7 @@
 # CampusShield Privacy Policy
 
 **Effective date:** 13 November 2026
-**Last updated:** 15 November 2026
+**Last updated:** 18 November 2026
 
 CampusShield is published by **[YOUR LEGAL NAME OR COMPANY]** ("CampusShield", "we", "us").
 Contact: **[privacy@your-domain.example]** · **[your postal address]**
@@ -16,15 +16,16 @@ where that information goes, and how to delete it.
 
 ## 1. Short version
 
-- CampusShield has **no accounts, no ads, no analytics, and no developer-operated telemetry**.
+- Accounts are **local to the CampusShield server you or your operator runs**. The developer receives
+  no account data. There are **no ads, no analytics, and no developer-operated telemetry**.
 - Device checks are **read-only**. The offline file scanner reads file names, a small file header, and
   a SHA-256 hash on your own machine; it never uploads file contents. We never read keystrokes,
   browsing history, screen, camera, microphone, contacts, photos, or location.
 - Results are stored **on your device or on the server you choose**. The developer does not receive them.
 - Two features use the network on their own: the optional breached-password check (five characters of a
   SHA-1 hash) and the connection to your own CampusShield server. The link inspector never opens or
-  fetches the link. The optional AI assistant contacts only the endpoint you configure, only when you
-  press Explain or Summary.
+  fetches the link. The optional AI assistant contacts only the endpoint you configure, and only when
+  you use the assistant view, send a chat message, press Explain, or ask for a summary.
 - You can erase everything from **Settings → Clear all data**, or by uninstalling the app.
 
 ## 2. Scope
@@ -36,7 +37,25 @@ software is self-hosted by design; we do not run a shared backend for the shippe
 
 ## 3. Information the app handles
 
-### 3.1 Device check results (created only when you press "Check device")
+### 3.1 Accounts and sessions
+
+The first person to sign up on a server creates the owner account. The server stores the following in
+the configured data store:
+
+| Item | Example | Why |
+| --- | --- | --- |
+| Name you type | `Meera Patel` | Label the account |
+| E-mail you type | `meera@campus.edu` | Sign-in identifier; it is not verified by e-mail |
+| Password hash | scrypt hash with a random salt | Verify sign-in; the password itself is never stored |
+| Role and timestamps | `owner`, created and last-signed-in ISO dates | Show who owns the server |
+| Session records | SHA-256 hash of the session token, creation and expiry dates (30 days) | Keep you signed in without storing the raw token |
+
+The raw session token is returned to the client once and kept in browser local storage (or the Flutter
+app's preferences); the server also sets an HttpOnly `SameSite=Lax` cookie. Signing out deletes the
+session record. Anyone who can run the server can read the store and should treat it as trusted
+infrastructure.
+
+### 3.2 Device check results (created only when you press "Check device")
 
 On macOS, the desktop app and self-hosted web server run read-only system commands and store the
 following in the configured data store:
@@ -55,7 +74,7 @@ Full findings, including the plain-language recommendation for each item, are st
 reproducible. The check does not read file contents, does not require administrator rights, does not
 install a driver or kernel extension, and does not monitor activity in the background.
 
-### 3.2 File scan results (created only when you run a scan or enable the watch)
+### 3.3 File scan results (created only when you run a scan or enable the watch)
 
 The desktop build can scan files for known hashes and suspicious patterns. Scanning happens on the
 machine running the server; file contents are never uploaded. The following is stored in the
@@ -74,14 +93,14 @@ Turning on the real-time folder watch only expands *when* those quick-scan folde
 does not add a new destination for data. Files are **not** transmitted to the developer, and no
 reputation lookup leaves the device.
 
-### 3.3 Linked devices (created when you add a device)
+### 3.4 Linked devices (created when you add a device)
 
 The name you type, device kind (computer, phone, tablet, browser), platform, source, timestamps, role,
 and — once that device is actually checked — its score and grade. A linked device with no check shows
 "Not checked" and does not affect the average. Linking a device does not transmit anything from that
 device.
 
-### 3.4 Campus threat queue (operator feature)
+### 3.5 Campus threat queue (operator feature)
 
 If an operator ingests events into their own CampusShield server, those events and the analyst's
 actions are stored in that server's data store. An event may contain a group name, event type, source
@@ -89,12 +108,12 @@ label, count, detail text, severity, rule, recommendation, and arbitrary metadat
 ingesting system. **The operator decides what to ingest and must ensure it is authorized and lawful.**
 Do not submit special-category data, and avoid personal data that is not needed for triage.
 
-### 3.5 On-device settings
+### 3.6 On-device settings
 
 The web, desktop, and mobile apps keep a small number of values in browser local storage: the API base
-URL you configure, your auto-refresh preference (on/off and interval), the optional API access token,
-and — if you configure the AI assistant — its base URL, model name, and API key. These values stay in
-that browser profile; clear site data to remove them.
+URL you configure, your session token, auto-refresh preference (on/off and interval), the optional
+API access token, and — if you configure the AI assistant — its base URL, model name, and API key.
+These values stay in that browser profile; clearing site data removes them and signs you out.
 
 Protection preferences (real-time toggle, notifications, folder exclusions, and the scan schedule) are
 saved by the server in the configured data store under `settings.preferences`, so the desktop app and a
@@ -102,13 +121,19 @@ self-hosted server share them across restarts. Exclusions are folder paths; excl
 not want its path stored. On the desktop app the server stores its data in the OS application-data
 directory (`~/Library/Application Support/CampusShield/data` on macOS).
 
-### 3.6 Optional AI assistant
+### 3.7 Optional AI assistant
 
-The AI assistant is off until you enter an endpoint, model, and key in Settings. When you press
-**Explain** on a finding, the app sends that finding's file name, severity, hash, and matched reason
-labels to your CampusShield server, which forwards them to the OpenAI-compatible endpoint you chose.
-When you press **Summary**, it sends scan counts, finding counts, and the parent folder name of open
-findings (not full paths). File contents are never sent.
+The AI assistant is off until you enter an endpoint, model, and key in Settings. The assistant view and
+the recommendation list work without it: they are built from stored checks and scans on your server.
+Once configured, the app sends the model only what it needs to phrase an answer:
+
+- **Suggestions:** the stored score, last scan counts, open detections, and the recommendations already
+  computed locally.
+- **Chat:** your message plus the last few chat turns and the same stored facts.
+- **Explain / Summary:** the finding's file name, severity, hash, and matched reason labels, or scan
+  and finding counts with parent folder names (not full paths).
+
+File contents, passwords, and session tokens are never sent to the AI endpoint.
 
 - The API key is stored only in browser local storage and is sent with each request to your own server;
   the server does not save it.
@@ -119,7 +144,7 @@ findings (not full paths). File contents are never sent.
 - The assistant is advisory. It cannot create, confirm, or clear a detection, and it is never consulted
   when the scanner decides whether a file is suspicious.
 
-### 3.7 What we never collect
+### 3.8 What we never collect
 
 No file contents, keystrokes, clipboard, browsing history, screen recordings, screenshots, camera or
 microphone input, contacts, calendars, photos, precise location, advertising identifiers, or
@@ -136,7 +161,7 @@ analytics, or device fingerprints are sent to us.
 | Apple's software-update service | Only during a macOS device check, via the system `softwareupdate` tool | No CampusShield data; the request is made by macOS | Needed to list pending updates; governed by Apple's privacy policy |
 | `fonts.gstatic.com` (Google Fonts) | First load of the Flutter build at `/app` | A request for the Roboto font file; no CampusShield data, no cookies, no identifier | The renderer's CanvasKit engine is self-hosted by the CampusShield server, so the font is the only third-party request the Flutter build makes |
 | MongoDB Atlas | Only if the operator sets `MONGODB_URI` on their own server | Events, actions, audit entries, devices, settings | The operator's own Atlas account and MongoDB's privacy terms apply |
-| The AI endpoint you configure (OpenAI, Azure OpenAI, OpenRouter, Groq, Ollama, etc.) | Only when you press **Explain** or **Summary** in the app | Finding name, severity, hash, and reason labels, or scan/finding counts and parent folder names — plus your API key | Off by default; HTTPS required except localhost. Governed by that provider's privacy policy |
+| The AI endpoint you configure (OpenAI, Azure OpenAI, OpenRouter, Groq, Ollama, etc.) | Only when AI is configured and you use the assistant view, chat, **Explain**, or **Summary** | Stored score and recommendations, chat message and recent turns, or finding name, severity, hash, and reason labels — plus your API key | Off by default; HTTPS required except localhost. Governed by that provider's privacy policy |
 
 The link inspector performs all checks in the browser and never opens, resolves, or fetches the URL you
 paste. Timestamps and device names are not attached to the password request.
@@ -161,20 +186,25 @@ paste. Timestamps and device names are not attached to the password request.
 - Retention is controlled by that operator. The default build keeps records until deleted.
 - **Delete everything:** Settings → Clear all data (also available as `DELETE /api/events`), which
   removes events, decisions, audit entries, devices, scans, quarantine records, and saved protection
-  preferences. Remove a single device from the Protection screen. Uninstalling the desktop or mobile
-  app removes its local app data; a self-hosted server's data must be deleted on that server.
-- Browser local storage (API base URL, token, AI settings) can be cleared through the browser's
-  site-data settings or the AI card's **Remove** button.
+  preferences. Accounts and sessions are kept so the owner can still sign in; to remove them, delete
+  the `users` and `sessions` records from the store (or use a fresh data folder, which reopens sign-up).
+  Remove a single device from the Protection screen. Uninstalling the desktop or mobile app removes its
+  local app data; a self-hosted server's data must be deleted on that server.
+- Browser local storage (API base URL, session token, API access token, AI settings) can be cleared
+  through the browser's site-data settings, the sign-out button, or the AI card's **Remove** button.
+  Clearing it signs that browser out but does not delete the account.
 
 ## 7. Security
 
 - The desktop app binds its server to `127.0.0.1` on an ephemeral port, so checks and data stay on the
   machine.
-- Authentication is opt-in and shared-secret only. If the operator sets `CAMPUSSHIELD_API_TOKEN`
-  and/or `CAMPUSSHIELD_VIEW_TOKEN`, API requests need that bearer token; the view token is GET-only.
-  There are no per-user accounts, and the token itself is stored in the browser's local storage on
-  each device that enters it. Without a token the server is open to anyone who can reach it, so do not
-  expose it to the internet without TLS and network controls as well.
+- Authentication is account-based. Passwords are hashed with scrypt and a random salt; session tokens
+  are generated with a cryptographic random source and stored only as SHA-256 hashes; the session is an
+  HttpOnly `SameSite=Lax` cookie plus a bearer token with a 30-day expiry; sign-in is rate-limited.
+  Optional shared secrets (`CAMPUSSHIELD_API_TOKEN`, `CAMPUSSHIELD_VIEW_TOKEN`) are accepted alongside
+  accounts for scripts, and the view token is GET-only. The API is open only until the first account or
+  token exists; it is not built for exposure to the open internet, so put TLS and network controls in
+  front of it if you do.
 - A remote signature feed is optional. If `CAMPUSSHIELD_SIGNATURES_URL` is set, the server downloads
   hash entries from that operator-chosen HTTPS URL at startup and when **Update signatures** is
   pressed; hashes are not personal data, and no local file names or scan results are sent.
@@ -216,22 +246,25 @@ changes will be noted in the release notes and, where required, in-app before th
 
 ## Appendix A — Store privacy disclosures
 
-These are the answers that match the shipped build. Re-check them whenever you add a backend, account
-system, analytics SDK, crash reporter, or ads.
+These are the answers that match the shipped build. Re-check them whenever you add a developer-operated
+backend, analytics SDK, crash reporter, ads, or third-party sign-in.
 
 ### Apple App Store / Mac App Store (App Privacy)
 
 - **Data Not Collected.** The shipped apps send data only to a server the user configures, and the
-  developer operates no backend. Complete the questionnaire with "No" for tracking and "No" for data
-  collection, and add the review note in [store-listing.md](store-listing.md).
-- If you later ship a hosted CampusShield backend, declare at minimum *Device ID* and *Other Usage
-  Data* (device posture results) linked to the user, used for App Functionality, and update this policy.
+  developer operates no backend. Accounts are created on and stored by that server, so the developer
+  receives no account, device, or scan data. Complete the questionnaire with "No" for tracking and
+  "No" for data collection, and add the review note in [store-listing.md](store-listing.md).
+- If you later ship a hosted CampusShield backend, declare at minimum *Contact Info* (name, e-mail),
+  *Device ID*, and *Other Usage Data* (device posture results) linked to the user, used for App
+  Functionality, and update this policy.
 - The app does not use the Advertising Identifier and does not track across apps or websites.
 
 ### Google Play (Data safety)
 
 - **No data collected or shared** for the shipped configuration (no developer backend, no analytics,
-  no ads).
+  no ads). If the user points the app at their own CampusShield server, the account and scan data live
+  on that server, which the developer does not operate.
 - Data is encrypted in transit when the user configures an HTTPS server. The app declares only the
   `INTERNET` permission. Release builds block cleartext traffic; debug builds allow it for LAN testing.
 - Data deletion: users can delete all data in-app (Settings → Clear all data) and by uninstalling.

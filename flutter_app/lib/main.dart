@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter/semantics.dart';
 
 import 'app_state.dart';
+import 'screens/auth_screen.dart';
 import 'screens/shell.dart';
 import 'theme.dart';
 
@@ -42,7 +43,15 @@ class _CampusShieldAppState extends State<CampusShieldApp> {
       title: 'CampusShield',
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),
-      home: Shell(state: _state),
+      home: AnimatedBuilder(
+        animation: _state,
+        builder: (context, _) {
+          if (_state.booting) return const BootScreen();
+          return _state.signedIn
+              ? Shell(state: _state)
+              : AuthScreen(state: _state);
+        },
+      ),
     );
   }
 }

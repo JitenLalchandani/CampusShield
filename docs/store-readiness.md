@@ -355,9 +355,12 @@ Budget several review rounds. First submissions commonly get one metadata or gui
    would let phones contribute a real score. Until then, mobile is explicit about being "Linked only".
 2. **Windows audit validation** — `win32` checks are implemented; verify them on real Home and Pro
    hardware (and add Secure Boot) before advertising Windows protection.
-3. **Authentication** — optional shared-secret tokens exist (`CAMPUSSHIELD_API_TOKEN` /
-   `CAMPUSSHIELD_VIEW_TOKEN`). Per-user accounts, sessions, and caller audit are still missing and are
-   required before a hosted multi-tenant deployment.
+3. **Authentication** — local accounts with scrypt-hashed passwords, hashed server-side sessions, a
+   30-day expiry, sign-out, and login rate limiting are implemented, alongside the optional shared
+   secrets (`CAMPUSSHIELD_API_TOKEN` / `CAMPUSSHIELD_VIEW_TOKEN`). Still missing: e-mail verification,
+   password reset, MFA, per-user data separation, and an audit of which account changed what — all
+   required before a hosted multi-tenant deployment. Store reviewers need a reachable self-hosted
+   server, because the developer operates none.
 4. **Mac App Store variant** — needs a sandboxed build and a feature flag that disables host checks.
 5. **Screenshots, feature graphic, hosted legal pages, support inbox** — listing assets only.
 6. **Accessibility and localization** — keyboard focus states and a screen-reader pass are worth doing

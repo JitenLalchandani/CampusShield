@@ -7,10 +7,13 @@ import 'package:http/http.dart' as http;
 import 'models.dart';
 
 class ApiException implements Exception {
-  const ApiException(this.message, [this.status = 0]);
+  const ApiException(this.message, [this.status = 0, this.code = '']);
 
   final String message;
   final int status;
+  final String code;
+
+  bool get isAuthRequired => status == 401 && code == 'auth_required';
 
   @override
   String toString() => message;
@@ -54,14 +57,21 @@ class ApiClient {
   final http.Client _http;
   String _baseUrl = '';
   String _token = '';
+  String _session = '';
 
   String get baseUrl => _baseUrl.isEmpty ? _sameOriginDefault() : _baseUrl;
   String get configuredBaseUrl => _baseUrl;
   String get token => _token;
+  String get session => _session;
 
-  void configure({required String baseUrl, required String token}) {
+  void configure({
+    required String baseUrl,
+    String token = '',
+    String session = '',
+  }) {
     _baseUrl = baseUrl;
     _token = token;
+    _session = session;
   }
 
   Uri _uri(String path, [Map<String, String>? query]) {
@@ -72,7 +82,8 @@ class ApiClient {
 
   Map<String, String> _headers() => {
         'Accept': 'application/json',
-        if (_token.isNotEmpty) 'Authorization': 'Bearer $_token',
+        if (_session.isNotEmpty) 'Authorization': 'Bearer $_session',
+        if (_token.isNotEmpty) 'X-Api-Token': _token,
       };
 
   Future<dynamic> _send(
@@ -118,10 +129,54 @@ class ApiClient {
           : payload is Map && payload['message'] != null
               ? '${payload['message']}'
               : 'The server returned ${response.statusCode}.';
-      throw ApiException(message, response.statusCode);
+      final code = payload is Map && payload['code'] != null ? '${payload['code']}' : '';
+      throw ApiException(message, response.statusCode, code);
     }
 
     return payload;
+  }
+
+  Future<AuthStatus> authStatus() async =>
+      AuthStatus.fromJson(mapFrom(await _send('GET', '/api/auth/status')));
+
+  Future<AuthSession> signup({
+    required String name,
+    required String email,
+    required String password,
+  }) async {
+    final payload = mapFrom(await _send('POST', '/api/auth/signup', body: {
+      'name': name,
+      'email': email,
+      'password': password,
+    }));
+    return AuthSession.fromJson(payload);
+  }
+
+  Future<AuthSession> login({required String email, required String password}) async {
+    final payload = mapFrom(await _send('POST', '/api/auth/login', body: {
+      'email': email,
+      'password': password,
+    }));
+    return AuthSession.fromJson(payload);
+  }
+
+  Future<void> logout() async {
+    await _send('POST', '/api/auth/logout');
+  }
+
+  Future<AuthUser> me() async {
+    final payload = mapFrom(await _send('GET', '/api/auth/me'));
+    return AuthUser.fromJson(mapFrom(payload['user']));
+  }
+
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    await _send('POST', '/api/auth/password', body: {
+      'currentPassword': currentPassword,
+      'newPassword': newPassword,
+    });
   }
 
   Future<Map<String, dynamic>> health() async =>
@@ -281,6 +336,56 @@ class ApiClient {
       timeout: const Duration(seconds: 45),
     ));
     return '${payload['reply'] ?? ''}';
+  }
+
+  Map<String, dynamic> _aiBody(AiConfig? config) =>
+      config != null && config.isConfigured ? {'ai': config.toJson()} : const {};
+
+  Future<AssistantSuggestion> assistantSuggestions({AiConfig? ai}) async {
+    final payload = mapFrom(await _send(
+      'POST',
+      '/api/assistant/suggest',
+      body: _aiBody(ai),
+      timeout: const Duration(seconds: 45),
+    ));
+    return AssistantSuggestion.fromJson(payload);
+  }
+
+  Future<AssistantReply> assistantChat({
+    required String message,
+    List<Map<String, String>> history = const [],
+    AiConfig? ai,
+  }) async {
+    final payload = mapFrom(await _send(
+      'POST',
+      '/api/assistant/chat',
+      body: {
+        'message': message,
+        'history': history,
+        ..._aiBody(ai),
+      },
+      timeout: const Duration(seconds: 60),
+    ));
+    return AssistantReply.fromJson(payload);
+  }
+
+  Future<AssistantTestResult> securityTest() async {
+    final payload = mapFrom(await _send(
+      'POST',
+      '/api/assistant/security-test',
+      timeout: const Duration(seconds: 60),
+    ));
+    return AssistantTestResult.fromJson(payload);
+  }
+
+  Future<String> assistantRunSummary({AiConfig? ai}) async {
+    final payload = mapFrom(await _send(
+      'POST',
+      '/api/assistant/run-summary',
+      body: _aiBody(ai),
+      timeout: const Duration(seconds: 45),
+    ));
+    return '${payload['summary'] ?? ''}';
   }
 
   void close() => _http.close();

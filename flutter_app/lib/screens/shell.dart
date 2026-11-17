@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../app_state.dart';
 import '../theme.dart';
 import 'activity_screen.dart';
+import 'assistant_screen.dart';
 import 'coverage_screen.dart';
 import 'protection_screen.dart';
 import 'settings_screen.dart';
@@ -64,7 +65,7 @@ class _ShellState extends State<Shell> {
         final body = _buildBody();
 
         if (widget.state.booting) {
-          return const Scaffold(body: _BootScreen());
+          return const Scaffold(body: BootScreen());
         }
 
         if (wide) {
@@ -137,6 +138,10 @@ class _ShellState extends State<Shell> {
     return IndexedStack(
       index: _index,
       children: [
+        AssistantScreen(
+          state: widget.state,
+          onNavigate: (index) => setState(() => _index = index),
+        ),
         ProtectionScreen(state: widget.state),
         ThreatsScreen(state: widget.state),
         ActivityScreen(state: widget.state),
@@ -155,6 +160,7 @@ class _Destination {
 }
 
 const _destinations = [
+  _Destination('Assistant', Icons.auto_awesome_outlined),
   _Destination('Protection', Icons.shield_outlined),
   _Destination('Threats', Icons.warning_amber_rounded),
   _Destination('Activity', Icons.history_rounded),
@@ -162,8 +168,8 @@ const _destinations = [
   _Destination('Settings', Icons.settings_outlined),
 ];
 
-class _BootScreen extends StatelessWidget {
-  const _BootScreen();
+class BootScreen extends StatelessWidget {
+  const BootScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -272,6 +278,8 @@ class _TopBar extends StatelessWidget {
             const SizedBox(width: 8),
           ],
           _ConnectionDot(state: state, showLabel: !compact),
+          const SizedBox(width: 4),
+          _AccountMenu(state: state),
           IconButton(
             tooltip: 'Refresh',
             onPressed: state.refreshing ? null : () => state.refresh(),
@@ -284,6 +292,75 @@ class _TopBar extends StatelessWidget {
                 : const Icon(Icons.refresh_rounded, color: CsColors.muted),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _AccountMenu extends StatelessWidget {
+  const _AccountMenu({required this.state});
+
+  final AppState state;
+
+  String _initials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+')).where((part) => part.isNotEmpty).toList();
+    if (parts.isEmpty) return '?';
+    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
+    return (parts.first.substring(0, 1) + parts.last.substring(0, 1)).toUpperCase();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = state.user;
+
+    return PopupMenuButton<String>(
+      tooltip: 'Account',
+      offset: const Offset(0, 42),
+      onSelected: (value) {
+        if (value == 'signout') state.signOut();
+      },
+      itemBuilder: (context) => [
+        PopupMenuItem<String>(
+          enabled: false,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                user?.name ?? 'Account',
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+              ),
+              const SizedBox(height: 2),
+              Text(user?.email ?? '', style: const TextStyle(color: CsColors.muted, fontSize: 11.5)),
+              const SizedBox(height: 2),
+              Text(
+                '${user?.roleLabel ?? ''} · ${state.apiBase.isEmpty ? 'this server' : state.apiBase}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: CsColors.faint, fontSize: 11),
+              ),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(),
+        const PopupMenuItem<String>(
+          value: 'signout',
+          child: Row(
+            children: [
+              Icon(Icons.logout_rounded, size: 18, color: CsColors.muted),
+              SizedBox(width: 10),
+              Text('Sign out'),
+            ],
+          ),
+        ),
+      ],
+      child: CircleAvatar(
+        radius: 15,
+        backgroundColor: CsColors.primary.withValues(alpha: 0.16),
+        child: Text(
+          _initials(user?.name ?? ''),
+          style: const TextStyle(color: CsColors.primary, fontSize: 12, fontWeight: FontWeight.w700),
+        ),
       ),
     );
   }

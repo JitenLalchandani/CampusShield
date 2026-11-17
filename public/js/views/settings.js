@@ -13,6 +13,7 @@ import {
   setApiToken
 } from "../api.js";
 import { testAiConnection } from "../ai.js";
+import { signOut } from "../auth.js";
 import { dateTime, esc, icon, toast } from "../ui.js";
 
 export const meta = {
@@ -32,6 +33,7 @@ export async function render(root) {
   const health = await api("/api/health").catch(() => null);
   const summary = await api("/api/summary").catch(() => null);
   const scanner = await api("/api/scanner").catch(() => null);
+  const me = await api("/api/auth/me").catch(() => null);
   const settings = getSettings();
   const ai = getAiConfig();
   const base = getApiBase();
@@ -50,6 +52,29 @@ export async function render(root) {
   root.innerHTML = `
     <div class="settings-grid">
       <div class="stack">
+        <section class="card">
+          <div class="card-head">
+            <div>
+              <h2>Account</h2>
+              <p>The signed-in account for this server</p>
+            </div>
+            <span class="chip">${me ? (me.user.role === "owner" ? "Owner" : "Member") : "Unknown"}</span>
+          </div>
+          <dl class="kv">
+            <dt>Name</dt><dd>${me ? esc(me.user.name) : "Not reported"}</dd>
+            <dt>Email</dt><dd>${me ? esc(me.user.email) : "Not reported"}</dd>
+            <dt>Last sign-in</dt><dd>${me?.user?.lastLoginAt ? dateTime(me.user.lastLoginAt) : "This session"}</dd>
+            <dt>Session</dt><dd>30-day token stored in this browser</dd>
+          </dl>
+          <div class="form-row" style="margin-top:12px">
+            <button class="btn danger" id="signOutBtn" type="button">Sign out</button>
+          </div>
+          <p class="helper">
+            Signing out revokes the session on the server and clears the token in this browser.
+            Other signed-in browsers keep their own sessions.
+          </p>
+        </section>
+
         <section class="card">
           <div class="card-head">
             <div>
@@ -84,12 +109,12 @@ export async function render(root) {
             server. Native shells and remote deployments need the full URL.
             On a phone sharing this Mac's Wi-Fi, use
             <span class="mono">http://&lt;mac-ip&gt;:3000</span>.
-            A token is only needed when the server sets
-            <span class="mono">CAMPUSSHIELD_API_TOKEN</span> or
+            Access uses the account you signed in with. A token is only needed for
+            scripts when the server sets <span class="mono">CAMPUSSHIELD_API_TOKEN</span> or
             <span class="mono">CAMPUSSHIELD_VIEW_TOKEN</span>.
           </p>
-          ${health?.authRequired && !token
-            ? `<p class="warning-note">This server requires a token. Other pages stay empty until you save one here.</p>`
+          ${!me && health?.authRequired
+            ? `<p class="warning-note">This server requires an account. Sign in again if pages stay empty.</p>`
             : ""}
           ${native
             ? `<p class="warning-note">Native shell detected. Use an HTTPS API in production — mobile operating systems block cleartext traffic by default.</p>`
@@ -327,7 +352,7 @@ export async function render(root) {
           <ul class="checklist">
             <li>${icon("info")}<span>Telemetry is limited to approved or locally scanned events; nothing is fabricated.</span></li>
             <li>${icon("info")}<span>Detection is rule-based and illustrative, not a validated engine.</span></li>
-            <li>${icon("info")}<span>API access is open by default. Set CAMPUSSHIELD_API_TOKEN for full access and CAMPUSSHIELD_VIEW_TOKEN for a read-only token.</span></li>
+            <li>${icon("info")}<span>Access is account-based: the first sign-up becomes the server owner. The API stays open only until that account exists.</span></li>
             <li>${icon("info")}<span>Containment records a decision only; it does not change any real system.</span></li>
             <li>${icon("info")}<span>Device checks are read-only and run on macOS and Windows hosts. The file scanner uses a small local signature set plus heuristics and cannot block execution; see Protection for what it found.</span></li>
             <li>${icon("info")}<span>Protection settings (real-time watch, scheduled scans, exclusions) are stored on this server. Scheduled scans run only while the app is open.</span></li>
@@ -345,6 +370,15 @@ function bind(root, { settings }) {
   const baseInput = root.querySelector("#apiBaseInput");
   const tokenInput = root.querySelector("#apiTokenInput");
   const result = root.querySelector("#apiTestResult");
+
+  root.querySelector("#signOutBtn")?.addEventListener("click", async event => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    button.textContent = "Signing out…";
+
+    await signOut();
+    window.dispatchEvent(new CustomEvent("campusshield:signed-out"));
+  });
 
   root.querySelector("#saveApi")?.addEventListener("click", async () => {
     setApiBase(baseInput.value);

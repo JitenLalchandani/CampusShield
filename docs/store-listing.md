@@ -8,7 +8,8 @@ Play, and Microsoft Store. Replace **[bracketed]** values before submitting.
 > Mac App Store builds cannot scan files because their sandboxes forbid it. Every store has policies
 > against misleading security claims, so each listing below states exactly what that build does. Keep
 > the listing consistent with the app. If you mention the AI assistant, always state that it only
-> explains findings and never decides whether a file is malicious.
+> explains findings and never decides whether a file is malicious. The app now has an account gate
+> (the first sign-up on a server creates its owner), so do not claim "no account" in any listing.
 
 ## Shared basics
 
@@ -21,7 +22,7 @@ Play, and Microsoft Store. Replace **[bracketed]** values before submitting.
 | Price | Free |
 | In-app purchases | None |
 | Ads | None |
-| Account required | No |
+| Account required | Yes — created on the CampusShield server the user runs (first sign-up becomes owner); no developer account |
 | Languages | English |
 | Support email | **[support@your-domain.example]** |
 | Privacy policy URL | **[https://your-domain.example/privacy]** |
@@ -33,7 +34,7 @@ Play, and Microsoft Store. Replace **[bracketed]** values before submitting.
 **Subtitle (30 characters):** `Cross-device safety score`
 
 **Promotional text (170 characters):**
-`See one honest safety score for every device you add, inspect suspicious links, and check passwords without sending them anywhere. No account, no ads, no tracking.`
+`See one honest safety score for every device you add, inspect suspicious links, and check passwords without sending them anywhere. No ads, no tracking.`
 
 **Keywords (100 characters):**
 `safety,security,privacy,phishing,password,device,score,campus,checker,link,breach,settings`
@@ -47,9 +48,12 @@ CampusShield keeps one shared safety score across the computers, phones, tablets
 This iPhone and iPad app gives you:
 
 • One score across your linked devices
+• An assistant that recommends next steps from stored results and runs a real security test on request
 • A phishing link inspector that never opens the link
 • A breached-password check that never sends your password
 • An optional campus threat queue, connected to your own server
+
+Sign in with an account you create on your own CampusShield server. The first sign-up becomes that server's owner; nothing is sent to the developer.
 
 PHISHING LINK INSPECTOR
 Paste a link and get plain-language warnings about plain HTTP, embedded credentials, raw IP hosts, punycode, deep subdomains, shorteners, risky top-level domains, brand impersonation, and one-character lookalikes. All checks run on your device and the link is never opened.
@@ -64,7 +68,7 @@ OPTIONAL CAMPUS THREAT QUEUE
 Connect your own CampusShield server to review alerts, record decisions, and keep an audit trail.
 
 PRIVATE BY DEFAULT
-No account, no ads, no analytics, no tracking. Results stay on your device or on the server you choose.
+No ads, no analytics, no tracking. Your account and results stay on the server you choose; the developer operates no backend.
 
 WHAT THIS IPHONE APP DOES NOT DO
 iOS does not allow one app to inspect other apps' files, so this build does not scan files or remove malware. The desktop CampusShield app does scan files with a local signature set and heuristics; install it there if you need scanning. A high score reflects the settings checked at that moment, not a guarantee that a device is secure.
@@ -81,11 +85,11 @@ First release: cross-device safety score, phishing link inspector, breached-pass
 ```
 CampusShield is a device posture checker, not an antivirus.
 
-- No account or demo credentials are required. The app opens to the Protection screen; the link inspector and breached-password check work immediately without a server.
+- CampusShield is self-hosted and the developer operates no backend. The app needs a CampusShield server the user runs; on first launch, enter that server's URL and create the owner account. With no server the app shows a setup state and does not fabricate results. Reviewers can run the server with `npm install && npm start` from the public repository and use a LAN or tunnel URL.
 - The iOS build does not scan the device or other apps (Guideline 2.5.1). It links a phone into a cross-device score and provides two client-side privacy tools.
 - The optional threat queue needs a CampusShield server URL that the user configures in Settings. No server is operated by the developer, so the queue and score screens show empty states by default.
 - Local Network permission is used only to reach the user's own CampusShield server. The password tool sends only a five-character SHA-1 prefix to api.pwnedpasswords.com; the link inspector never opens links.
-- No tracking, ads, analytics, or account creation.
+- No tracking, ads, or analytics. Accounts are created on the user's own server, not with the developer.
 ```
 
 **App Privacy answers:** Data Not Collected, no tracking. See
@@ -121,11 +125,12 @@ One honest safety score for all your devices.
 CampusShield keeps one shared safety score across the computers, phones, tablets, and browsers you add. Checked devices feed the average; unchecked devices stay marked "Not checked" instead of guessing.
 
 • One score across your linked devices
+• An assistant that recommends next steps and runs a real security test
 • A phishing link inspector that never opens the link
 • A breached-password check that never sends your password
 • An optional campus threat queue, connected to your own server
 
-All checks run on your Mac. No account, no ads, no analytics, no tracking. Results stay on your device or on the server you choose.
+Sign in with an account you create on your own CampusShield server. All checks run on your Mac, and no ads, analytics, or tracking are included; results stay on your device or on the server you choose.
 
 This sandboxed App Store build cannot read system security settings or scan files, so device checks
 and malware scans show "Not available in this build". The full read-only device audit and file scanner
@@ -139,6 +144,9 @@ For the **direct-download Mac app** (not a store listing), use the Google Play f
 this section near the top:
 
 ```
+ACCOUNTS ON YOUR OWN SERVER
+The first sign-up creates the owner account on the CampusShield server you run. Passwords are hashed with scrypt, sessions are stored only as hashes and expire after 30 days, and you can sign out from Settings. No developer account, cloud sync, or analytics are involved.
+
 READ-ONLY DEVICE CHECKS
 FileVault, firewall, Gatekeeper, System Integrity Protection, screen lock, guest account, automatic updates, pending updates, recent installers, and background login items. Every finding includes the reason and the fix. No administrator rights, no drivers, no background monitoring.
 
@@ -151,8 +159,11 @@ Optional user-space watch scans new files as they land in your quick-scan folder
 SCHEDULES, EXCLUSIONS, AND CUSTOM SCANS
 Turn on real-time protection, schedule a daily or weekly quick or full scan, exclude folders you never want scanned, or scan one specific folder or file on demand. Desktop notifications and a menu-bar icon keep the app reachable; scheduled scans run only while CampusShield is open.
 
+ASSISTANT AND SECURITY TEST
+The first screen after sign-in shows what the stored checks recommend and one button that runs a read-only device check plus a real quick file scan. Ask the assistant for your status or open detections and it answers from the same stored results.
+
 OPTIONAL AI ASSISTANT
-Connect your own OpenAI-compatible endpoint, including a local Ollama model, to get a plain-language explanation of a finding or a summary of current protection. Your key stays in the app's local storage, remote endpoints must use HTTPS, and the assistant never decides whether a file is malicious — detection is always local.
+Connect your own OpenAI-compatible endpoint, including a local Ollama model, to have the assistant phrase its suggestions and answers in plain language, explain a finding, or summarize a finished test. Suggestions and scores are always computed locally; the model cannot change a detection. Your key stays in the app's local storage, and remote endpoints must use HTTPS.
 ```
 
 **Mac screenshots:** 1280 × 800, 1440 × 900, 2560 × 1600, or 2880 × 1800 (16:10).
@@ -171,10 +182,11 @@ One honest safety score for all your devices.
 CampusShield keeps one shared safety score across the computers, phones, tablets, and browsers you add. Checked devices feed the average; unchecked devices stay marked "Not checked" instead of guessing.
 
 • One score across your linked devices
+• Assistant that recommends next steps and runs a real security test
 • Phishing link inspector that never opens the link
 • Breached-password check using k-anonymity — your password never leaves the device
 • Optional campus threat queue with an audit trail, connected to your own server
-• No account, no ads, no analytics, no tracking
+• Accounts on your own server; no ads, no analytics, no tracking
 
 PHISHING LINK INSPECTOR
 Paste a link and get plain-language warnings about plain HTTP, embedded credentials, raw IP hosts, punycode, deep subdomains, shorteners, risky top-level domains, brand impersonation, and one-character lookalikes. All checks run on your device and the link is never opened.
@@ -185,7 +197,7 @@ See whether a password appears in a public breach corpus. Only the first five ch
 CROSS-DEVICE SCORE
 Run CampusShield's read-only device checks or a file scan on a Mac or Windows computer (desktop app) and link this phone to see one combined score. Android sandboxing prevents this app from scanning the phone's own files in this release, so the Android app links into the score and does not report a phone score of its own.
 
-Start the CampusShield server on a computer you control and enter its URL in Settings to use the queue. Results stay on your device or on the server you choose.
+Start the CampusShield server on a computer you control, enter its URL, and create the owner account on first run. Results and account data stay on your device or on the server you choose.
 
 CampusShield is not a full antivirus. The desktop app scans files with a small local signature set and heuristics; it does not filter traffic, scan process memory, or block execution with a kernel driver. A high score reflects the settings checked at that moment, not a guarantee.
 ```
@@ -197,7 +209,7 @@ CampusShield is not a full antivirus. The desktop app scans files with a small l
 | Is all user data encrypted in transit? | Yes (when an HTTPS server is configured) |
 | Does your app provide a way for users to request data deletion? | Yes — in-app "Clear all data", plus **[support@your-domain.example]** |
 | Does your app contain ads? | No |
-| App access | All functionality is available without special access; the optional queue shows an empty state until a server URL is configured |
+| App access | An account is required. The first sign-up on the user's own server creates the owner; no developer credentials exist. Reviewers can run the self-hosted server from the public repository |
 | Content rating questionnaire | Utility; no violence, sex, language, gambling, drugs, or user interaction |
 | Target audience | 13+ (campus and workplace) |
 | Ads declaration | No ads |
@@ -227,9 +239,11 @@ CampusShield gives you one honest safety score across every device you add.
 Link computers, phones, tablets, and browsers. Checked devices feed the average; unchecked devices stay visibly "Not checked" instead of guessing, and the weakest device is called out so you know where to start.
 
 Also included:
+• An assistant that recommends next steps from stored results and runs a real security test on request
 • A phishing link inspector that never opens the link
 • A breached-password check that never sends your password
 • An optional campus threat queue with an audit trail, connected to your own server
+• Accounts created on the server you run — the first sign-up becomes its owner
 
 The read-only device audit runs in the macOS desktop app, which can check disk encryption, firewall, app verification, system integrity, screen lock, guest account, updates, recent installers, and background login items.
 
@@ -241,7 +255,7 @@ Mobile builds link into the shared score; they do not scan their own device in t
 
 The Windows build checks BitLocker, firewall profiles, Microsoft Defender, UAC, inactivity lock, the Guest account, installed-update age, and startup commands, and links into the shared score. Checks that Windows does not allow without administrator rights are shown as unverified rather than guessed.
 
-No account. No ads. No analytics. Data stays on your device.
+Accounts and data stay on your own server. No ads, no analytics, no tracking.
 
 CampusShield is not a full antivirus. Its signature set is small and updated only from a feed you supply, its real-time watch cannot block execution without a signed driver, and it does not filter traffic or scan process memory.
 ```
@@ -258,14 +272,15 @@ those checks on real Windows hardware before the listing promises them.
 
 Capture these states from a real running build (no invented data):
 
-1. **Protection home** — a checked device with a Good score and two findings.
-2. **Why the score changed** — findings list showing a passed and a failed check with fixes.
-3. **Malware scan** — a completed quick scan with one quarantined finding and the score penalty visible.
-4. **Devices** — one checked computer, one phone marked "Not checked".
-5. **Link inspector** — a high-risk lookalike domain result.
-6. **Password check** — a breached result showing a count and the k-anonymity note.
-7. **Activity** — device checks, scans, and analyst decisions in one timeline.
-8. **Settings → Protection** — real-time toggle, a scheduled scan with its next run, and one excluded folder.
-9. **AI explanation** — a finding explained in plain language, with the provider name and the "advisory only" note visible.
+1. **Assistant home** — a signed-in account with a real score, one recommendation, and the chat box.
+2. **Protection home** — a checked device with a Good score and two findings.
+3. **Why the score changed** — findings list showing a passed and a failed check with fixes.
+4. **Malware scan** — a completed quick scan with one quarantined finding and the score penalty visible.
+5. **Devices** — one checked computer, one phone marked "Not checked".
+6. **Link inspector** — a high-risk lookalike domain result.
+7. **Password check** — a breached result showing a count and the k-anonymity note.
+8. **Activity** — device checks, scans, and analyst decisions in one timeline.
+9. **Settings → Protection** — real-time toggle, a scheduled scan with its next run, and one excluded folder.
+10. **AI explanation** — a finding explained in plain language, with the provider name and the "advisory only" note visible.
 
 Add device frames only if the store allows them; keep text legible at thumbnail size.

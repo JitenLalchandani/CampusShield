@@ -1,5 +1,6 @@
 const BASE_KEY = "campusshield.apiBase";
 const TOKEN_KEY = "campusshield.apiToken";
+const SESSION_KEY = "campusshield.session";
 const SETTINGS_KEY = "campusshield.settings";
 const AI_KEY = "campusshield.ai";
 
@@ -9,10 +10,11 @@ const DEFAULT_SETTINGS = {
 };
 
 export class ApiError extends Error {
-  constructor(message, status = 0) {
+  constructor(message, status = 0, code = "") {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -63,13 +65,40 @@ export function apiUrl(path) {
   return base ? `${base}${path}` : path;
 }
 
+export function getSessionToken() {
+  try {
+    return (localStorage.getItem(SESSION_KEY) || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+export function setSessionToken(value) {
+  const clean = String(value || "").trim();
+
+  try {
+    if (clean) localStorage.setItem(SESSION_KEY, clean);
+    else localStorage.removeItem(SESSION_KEY);
+  } catch {
+    /* storage may be unavailable */
+  }
+
+  return clean;
+}
+
+export function clearSessionToken() {
+  return setSessionToken("");
+}
+
 export async function api(path, options = {}) {
   const token = getApiToken();
+  const session = getSessionToken();
   const init = {
     method: options.method || "GET",
     headers: {
       Accept: "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(session ? { Authorization: `Bearer ${session}` } : {}),
+      ...(token ? { "X-Api-Token": token } : {}),
       ...(options.headers || {})
     }
   };
@@ -103,23 +132,31 @@ export async function api(path, options = {}) {
   }
 
   if (response.status === 401) {
+    if (payload?.code === "auth_required") {
+      window.dispatchEvent(new CustomEvent("campusshield:auth-required"));
+      throw new ApiError("Sign in to use CampusShield.", 401, "auth_required");
+    }
+
     throw new ApiError(
       "This server requires an API token. Add it in Settings → API access token.",
-      401
+      401,
+      payload?.code || ""
     );
   }
 
   if (response.status === 403) {
     throw new ApiError(
       payload?.error || "This token is read-only, so this change was blocked.",
-      403
+      403,
+      payload?.code || ""
     );
   }
 
   if (!response.ok) {
     throw new ApiError(
       payload?.error || payload?.message || `Request failed with status ${response.status}`,
-      response.status
+      response.status,
+      payload?.code || ""
     );
   }
 

@@ -722,6 +722,220 @@ class AiConfig {
   }
 }
 
+class AuthUser {
+  const AuthUser({
+    required this.id,
+    required this.email,
+    required this.name,
+    required this.role,
+    required this.lastLoginAt,
+  });
+
+  final String id;
+  final String email;
+  final String name;
+  final String role;
+  final DateTime? lastLoginAt;
+
+  bool get isOwner => role == 'owner';
+  String get roleLabel => isOwner ? 'Owner' : 'Member';
+
+  factory AuthUser.fromJson(Map<String, dynamic> json) => AuthUser(
+        id: _text(json['id']),
+        email: _text(json['email']),
+        name: _text(json['name'], 'Account'),
+        role: _text(json['role'], 'member'),
+        lastLoginAt: _date(json['lastLoginAt']),
+      );
+}
+
+class AuthStatus {
+  const AuthStatus({required this.hasAccount, required this.signupOpen, this.user});
+
+  static const unknown = AuthStatus(hasAccount: false, signupOpen: false);
+
+  final bool hasAccount;
+  final bool signupOpen;
+  final AuthUser? user;
+
+  factory AuthStatus.fromJson(Map<String, dynamic> json) => AuthStatus(
+        hasAccount: json['hasAccount'] == true,
+        signupOpen: json['signupOpen'] == true,
+        user: json['user'] is Map ? AuthUser.fromJson(_map(json['user'])) : null,
+      );
+}
+
+class AuthSession {
+  const AuthSession({required this.user, required this.token, required this.expiresAt});
+
+  final AuthUser user;
+  final String token;
+  final DateTime? expiresAt;
+
+  factory AuthSession.fromJson(Map<String, dynamic> json) => AuthSession(
+        user: AuthUser.fromJson(_map(json['user'])),
+        token: _text(json['token']),
+        expiresAt: _date(json['expiresAt']),
+      );
+}
+
+class AssistantAction {
+  const AssistantAction({
+    required this.kind,
+    this.scanId = '',
+    this.threatId = '',
+    this.checkId = '',
+  });
+
+  static const none = AssistantAction(kind: 'none');
+
+  final String kind;
+  final String scanId;
+  final String threatId;
+  final String checkId;
+
+  factory AssistantAction.fromJson(Map<String, dynamic> json) => AssistantAction(
+        kind: _text(json['kind']),
+        scanId: _text(json['scanId']),
+        threatId: _text(json['threatId']),
+        checkId: _text(json['checkId']),
+      );
+}
+
+class AssistantRecommendation {
+  const AssistantRecommendation({
+    required this.id,
+    required this.title,
+    required this.detail,
+    required this.severity,
+    required this.action,
+  });
+
+  final String id;
+  final String title;
+  final String detail;
+  final String severity;
+  final AssistantAction action;
+
+  factory AssistantRecommendation.fromJson(Map<String, dynamic> json) => AssistantRecommendation(
+        id: _text(json['id']),
+        title: _text(json['title'], 'Next step'),
+        detail: _text(json['detail']),
+        severity: _text(json['severity'], 'info'),
+        action: AssistantAction.fromJson(_map(json['action'])),
+      );
+}
+
+class AssistantAi {
+  const AssistantAi({
+    required this.available,
+    required this.reply,
+    required this.error,
+    required this.disclaimer,
+  });
+
+  static const none = AssistantAi(available: false, reply: '', error: '', disclaimer: aiDisclaimer);
+
+  final bool available;
+  final String reply;
+  final String error;
+  final String disclaimer;
+
+  factory AssistantAi.fromJson(Map<String, dynamic> json) => AssistantAi(
+        available: json['available'] == true,
+        reply: _text(json['reply']),
+        error: _text(json['error']),
+        disclaimer: _text(json['disclaimer'], aiDisclaimer),
+      );
+}
+
+class AssistantSuggestion {
+  const AssistantSuggestion({
+    required this.generatedAt,
+    required this.recommendations,
+    required this.ai,
+    required this.aiSetup,
+  });
+
+  final DateTime? generatedAt;
+  final List<AssistantRecommendation> recommendations;
+  final AssistantAi ai;
+  final String? aiSetup;
+
+  factory AssistantSuggestion.fromJson(Map<String, dynamic> json) => AssistantSuggestion(
+        generatedAt: _date(json['generatedAt']),
+        recommendations: _list(json['recommendations'])
+            .whereType<Map>()
+            .map((item) => AssistantRecommendation.fromJson(Map<String, dynamic>.from(item)))
+            .toList(),
+        ai: AssistantAi.fromJson(_map(json['ai'])),
+        aiSetup: json['aiSetup'] == null ? null : _text(json['aiSetup']),
+      );
+}
+
+class AssistantTestResult {
+  const AssistantTestResult({
+    required this.device,
+    required this.checkSupported,
+    required this.checkMessage,
+    required this.scan,
+    required this.scanError,
+    required this.summary,
+    required this.recommendations,
+  });
+
+  final Device? device;
+  final bool checkSupported;
+  final String? checkMessage;
+  final ScanRecord? scan;
+  final String? scanError;
+  final String summary;
+  final List<AssistantRecommendation> recommendations;
+
+  factory AssistantTestResult.fromJson(Map<String, dynamic> json) {
+    final check = _map(json['check']);
+    return AssistantTestResult(
+      device: json['device'] is Map ? Device.fromJson(_map(json['device'])) : null,
+      checkSupported: check['supported'] == true,
+      checkMessage: check['message'] == null ? null : _text(check['message']),
+      scan: json['scan'] is Map ? ScanRecord.fromJson(_map(json['scan'])) : null,
+      scanError: json['scanError'] == null ? null : _text(json['scanError']),
+      summary: _text(json['summary']),
+      recommendations: _list(json['recommendations'])
+          .whereType<Map>()
+          .map((item) => AssistantRecommendation.fromJson(Map<String, dynamic>.from(item)))
+          .toList(),
+    );
+  }
+}
+
+class AssistantReply {
+  const AssistantReply({
+    required this.intent,
+    required this.reply,
+    required this.recommendations,
+    required this.ai,
+    required this.run,
+  });
+
+  final String intent;
+  final String reply;
+  final List<AssistantRecommendation> recommendations;
+  final AssistantAi ai;
+  final AssistantTestResult? run;
+
+  factory AssistantReply.fromJson(Map<String, dynamic> json) => AssistantReply(
+        intent: _text(json['intent'], 'question'),
+        reply: _text(json['reply']),
+        recommendations: _list(json['recommendations'])
+            .whereType<Map>()
+            .map((item) => AssistantRecommendation.fromJson(Map<String, dynamic>.from(item)))
+            .toList(),
+        ai: AssistantAi.fromJson(_map(json['ai'])),
+        run: json['run'] is Map ? AssistantTestResult.fromJson(_map(json['run'])) : null,
+      );
+}
+
 const aiDisclaimer =
     'AI guidance is advisory. CampusShield decides detections locally with signatures and heuristics; '
     'the assistant cannot change results, quarantine files, or edit settings.';

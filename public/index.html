@@ -16,9 +16,11 @@
   <link rel="stylesheet" href="/css/app.css">
 </head>
 <body>
+  <div id="authRoot"></div>
+
   <div class="app-shell">
     <aside class="sidebar">
-      <a class="brand" href="#/protection" aria-label="CampusShield home">
+      <a class="brand" href="#/assistant" aria-label="CampusShield home">
         <span class="brand-mark" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 2.8 19 5.6v5.1c0 4.6-3 8.1-7 10.5-4-2.4-7-5.9-7-10.5V5.6L12 2.8Z"/>
@@ -32,6 +34,15 @@
       </a>
 
       <nav class="side-nav" aria-label="Primary">
+        <a class="nav-link" href="#/assistant" data-route="assistant">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3.2 13.9 9l5.8 1.9-5.8 1.9L12 18.6l-1.9-5.8L4.3 10.9 10.1 9 12 3.2Z"/>
+              <path d="m18.4 15.8.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7.7-1.9Z"/>
+            </svg>
+          </span>
+          <span>Assistant</span>
+        </a>
         <a class="nav-link" href="#/protection" data-route="protection">
           <span class="nav-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -98,6 +109,10 @@
           <p class="page-sub" id="pageSubtitle">Loading the latest campus telemetry…</p>
         </div>
         <div class="topbar-actions">
+          <button class="conn-pill account-pill" id="accountPill" type="button" title="Account" hidden>
+            <span class="avatar" id="accountInitials" aria-hidden="true">–</span>
+            <span id="accountEmail">Account</span>
+          </button>
           <span class="conn-pill" id="connPill">
             <span class="dot"></span>
             <span id="connText">Connecting</span>
@@ -132,6 +147,13 @@
   </div>
 
   <nav class="tabbar" aria-label="Primary">
+    <a class="tab-link" href="#/assistant" data-route="assistant">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 3.2 13.9 9l5.8 1.9-5.8 1.9L12 18.6l-1.9-5.8L4.3 10.9 10.1 9 12 3.2Z"/>
+        <path d="m18.4 15.8.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7.7-1.9Z"/>
+      </svg>
+      <span>Assistant</span>
+    </a>
     <a class="tab-link" href="#/protection" data-route="protection">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M12 2.8 19 5.6v5.1c0 4.6-3 8.1-7 10.5-4-2.4-7-5.9-7-10.5V5.6L12 2.8Z"/>

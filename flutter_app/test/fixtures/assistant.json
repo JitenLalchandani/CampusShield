@@ -1,0 +1,61 @@
+{
+  "generatedAt": "2026-11-18T09:12:00.000Z",
+  "snapshot": {
+    "generatedAt": "2026-11-18T09:12:00.000Z",
+    "platform": "macOS",
+    "protection": { "total": 1, "checked": 1, "average": 90, "grade": "Good", "weakest": null },
+    "host": {
+      "name": "Meets-MacBook-Pro",
+      "platform": "macOS",
+      "score": 90,
+      "grade": "Good",
+      "checkedAt": "2026-11-18T09:00:00.000Z",
+      "summary": { "passed": 10, "attention": 1, "unverified": 1 }
+    },
+    "devices": [
+      { "name": "Meets-MacBook-Pro", "platform": "macOS", "kind": "computer", "score": 90, "grade": "Good", "source": "electron" }
+    ],
+    "attentionChecks": [],
+    "scanner": {
+      "signatureVersion": "2026.11.1",
+      "signatureCount": 48,
+      "realtime": false,
+      "watchSupported": true,
+      "scheduleEnabled": false,
+      "schedule": { "scope": "quick", "frequency": "weekly", "time": "09:00", "lastRunAt": null },
+      "exclusions": 0,
+      "remoteFeed": false,
+      "signatureWarnings": [],
+      "activeScan": null
+    },
+    "scans": [],
+    "lastScan": null,
+    "lastScanAgeDays": null,
+    "openThreats": [],
+    "quarantine": { "count": 0, "items": [] }
+  },
+  "recommendations": [
+    {
+      "id": "threat-threat-1",
+      "title": "Quarantine invoice.scr",
+      "detail": "The scanner flagged this high risk: Executable in Downloads",
+      "severity": "HIGH",
+      "action": { "kind": "quarantine-threat", "scanId": "scan-1", "threatId": "threat-1" }
+    },
+    {
+      "id": "schedule-scan",
+      "title": "Schedule a regular scan",
+      "detail": "No automatic scan is scheduled, so nothing runs unless you start it.",
+      "severity": "info",
+      "action": { "kind": "schedule-scan" }
+    }
+  ],
+  "ai": {
+    "available": false,
+    "reply": null,
+    "model": null,
+    "error": null,
+    "disclaimer": "AI guidance is advisory. CampusShield decides detections locally with signatures and heuristics; the assistant cannot change results, quarantine files, or edit settings."
+  },
+  "aiSetup": "Connect an OpenAI-compatible endpoint in Settings to get AI suggestions. The recommendations above come from real checks and scans."
+}

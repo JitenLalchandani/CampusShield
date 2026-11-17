@@ -10,6 +10,8 @@ const crypto = require("node:crypto");
 const { createStore } = require("./store");
 const { createScannerService } = require("./scanner/manager");
 const ai = require("./ai");
+const auth = require("./auth");
+const assistant = require("./assistant");
 
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
 const ACTIONS = ["Investigate", "Contain", "Reopen"];
@@ -302,6 +304,153 @@ function createApp({ store, dataDir }) {
     return updated;
   }
 
+  // Read-only posture check of the server host. Shared by the protection route,
+  // the security test, and the assistant so every caller sees the same facts.
+  async function runDeviceCheck() {
+    let audit;
+
+    try {
+      audit = await auditHost();
+    } catch (error) {
+      console.error("Device check failed:", error.message);
+      throw Object.assign(
+        new Error("Device check failed before it could finish."),
+        { statusCode: 500 }
+      );
+    }
+
+    if (!audit.supported) {
+      return {
+        supported: false,
+        platform: audit.platform,
+        message: audit.message,
+        device: null
+      };
+    }
+
+    const existing = await store.devices.get(HOST_DEVICE_ID);
+    const checkedAt = audit.checkedAt || new Date().toISOString();
+    const penalty = await scanner.penalty();
+    const score = Math.max(0, Math.min(100, audit.score - penalty));
+
+    const device = {
+      id: HOST_DEVICE_ID,
+      name: audit.hostname || "This computer",
+      kind: "computer",
+      platform: audit.platform,
+      platformLabel: audit.platformLabel,
+      source: "electron",
+      role: "host",
+      model: audit.model || null,
+      postureScore: audit.score,
+      scanPenalty: penalty,
+      score,
+      grade: gradeFor(score),
+      rulesVersion: audit.rulesVersion,
+      checkedAt,
+      lastSeen: checkedAt,
+      createdAt: existing ? existing.createdAt : checkedAt,
+      checks: audit.checks,
+      summary: {
+        passed: audit.passed,
+        attention: audit.attention,
+        unverified: audit.unverified
+      }
+    };
+
+    await store.devices.upsert(device);
+
+    await auditEntry(store, {
+      kind: "device",
+      message:
+        `Device check on ${device.name}: ${device.score}/100 (${device.grade}) · ` +
+        `${audit.passed} passed · ${audit.attention} need attention · ` +
+        `${audit.unverified} unverified` +
+        `${penalty ? ` · ${penalty} points from open threats` : ""}`,
+      severity: audit.attention > 0 ? "MEDIUM" : null
+    });
+
+    const devices = (await store.devices.all()).map(publicDoc);
+
+    return {
+      supported: true,
+      device,
+      summary: protectionSummary(devices)
+    };
+  }
+
+  async function gatherAssistantState() {
+    const [devices, status, scans, quarantine] = await Promise.all([
+      store.devices.all().then(items => items.map(publicDoc)),
+      scanner.status(),
+      scanner.listScans(5),
+      scanner.listQuarantine()
+    ]);
+
+    return assistant.describeState({
+      devices,
+      status,
+      scans,
+      quarantine,
+      platform: platformLabel(process.platform),
+      protection: protectionSummary(devices)
+    });
+  }
+
+  // One security test: a real device check plus a real quick file scan.
+  // The scan keeps running in the background; the caller polls /api/scans/:id.
+  async function runSecurityTest() {
+    let check;
+
+    if (deviceAuditAvailable()) {
+      try {
+        const result = await runDeviceCheck();
+        check = result.supported
+          ? { supported: true, device: result.device, summary: result.summary, message: null }
+          : { supported: false, device: null, message: result.message };
+      } catch (error) {
+        check = { supported: false, device: null, message: error.message };
+      }
+    } else {
+      check = {
+        supported: false,
+        device: null,
+        message: `Device checks run on macOS and Windows only; this server is on ${platformLabel(process.platform)}.`
+      };
+    }
+
+    let scan = null;
+    let scanError = null;
+
+    try {
+      scan = await scanner.startScan({ scope: "quick", trigger: "manual" });
+    } catch (error) {
+      scanError =
+        error.statusCode === 409
+          ? "A scan is already running. Wait for it to finish or cancel it."
+          : error.message;
+
+      if (error.statusCode !== 409) {
+        console.error("Security test scan failed:", error.message);
+      }
+    }
+
+    await auditEntry(store, {
+      kind: "security-test",
+      message:
+        `Security test: ${
+          check.supported ? `device check ${check.device.score}/100 (${check.device.grade})` : "device check unavailable"
+        }, ${scan ? "quick scan started" : scanError}`
+    });
+
+    return {
+      device: check.device,
+      check: { supported: check.supported, message: check.message },
+      scan,
+      scanError
+    };
+  }
+
   app.disable("x-powered-by");
   app.use(express.json({ limit: "1mb" }));
 
@@ -343,36 +492,60 @@ function createApp({ store, dataDir }) {
     next();
   });
 
-  // Optional shared-secret access. Health stays open so the app can show
-  // connectivity before a token is entered.
+  // Access control: a signed-in account, or the optional shared secrets. When the
+  // store has no account yet the API stays open so the first person can sign up.
   const apiAuth = readApiAuth();
-  const authRequired = Boolean(apiAuth.admin || apiAuth.viewer);
+  const tokenAuthConfigured = Boolean(apiAuth.admin || apiAuth.viewer);
 
-  app.use("/api", (req, res, next) => {
-    if (!authRequired || req.path === "/health") return next();
+  app.use("/api", async (req, res, next) => {
+    try {
+      const token = requestToken(req);
 
-    const token = requestToken(req);
-
-    if (tokenMatches(token, apiAuth.admin)) {
-      req.apiRole = "admin";
-      return next();
-    }
-
-    if (tokenMatches(token, apiAuth.viewer)) {
-      if (req.method === "GET" || req.method === "HEAD") {
-        req.apiRole = "viewer";
+      if (tokenMatches(token, apiAuth.admin)) {
+        req.apiRole = "admin";
         return next();
       }
 
-      return res.status(403).json({ error: "This token is read-only." });
-    }
+      if (tokenMatches(token, apiAuth.viewer)) {
+        if (req.method === "GET" || req.method === "HEAD") {
+          req.apiRole = "viewer";
+          return next();
+        }
 
-    res.setHeader("WWW-Authenticate", 'Bearer realm="CampusShield"');
-    return res.status(401).json({ error: "API token required." });
+        return res.status(403).json({ error: "This token is read-only." });
+      }
+
+      const resolved = await auth.resolveSession(req, store);
+
+      if (resolved) {
+        req.user = auth.publicUser(resolved.user);
+        req.session = resolved.session;
+        req.apiRole = resolved.user.role === "owner" ? "admin" : "member";
+        return next();
+      }
+
+      if (req.path === "/health" || req.path.startsWith("/auth/")) return next();
+
+      if (!tokenAuthConfigured && (await store.users.count()) === 0) return next();
+
+      res.setHeader("WWW-Authenticate", 'Bearer realm="CampusShield"');
+      return res.status(401).json({
+        error: "Sign in to use CampusShield.",
+        code: "auth_required"
+      });
+    } catch (error) {
+      return next(error);
+    }
   });
 
-  app.get("/api/health", (_req, res) => {
+  auth.registerAuthRoutes(app, {
+    store,
+    audit: entry => auditEntry(store, entry)
+  });
+
+  app.get("/api/health", async (_req, res) => {
     const scannerStatus = scanner.status();
+    const accounts = await store.users.count();
 
     res.json({
       status: "ok",
@@ -384,7 +557,9 @@ function createApp({ store, dataDir }) {
       platformLabel: platformLabel(process.platform),
       scannerAvailable: process.platform === "darwin" || process.platform === "win32",
       deviceAuditAvailable: deviceAuditAvailable(),
-      authRequired,
+      authRequired: tokenAuthConfigured || accounts > 0,
+      accountsEnabled: true,
+      signupOpen: accounts === 0,
       fileScanner: {
         engineVersion: scannerStatus.engineVersion,
         signatureVersion: scannerStatus.signatureVersion,
@@ -460,77 +635,27 @@ function createApp({ store, dataDir }) {
   });
 
   // Runs read-only checks on the server host. Nothing is changed on the device.
-  app.post("/api/protection/scan", async (_req, res) => {
-    let audit;
-
+  app.post("/api/protection/scan", async (_req, res, next) => {
     try {
-      audit = await auditHost();
-    } catch (error) {
-      console.error("Device check failed:", error.message);
-      return res.status(500).json({
-        message: "Device check failed before it could finish.",
-        error: error.message
-      });
-    }
+      const result = await runDeviceCheck();
 
-    if (!audit.supported) {
-      return res.status(501).json({
-        supported: false,
-        platform: audit.platform,
-        message: audit.message
-      });
-    }
-
-    const existing = await store.devices.get(HOST_DEVICE_ID);
-    const checkedAt = audit.checkedAt || new Date().toISOString();
-    const penalty = await scanner.penalty();
-    const score = Math.max(0, Math.min(100, audit.score - penalty));
-
-    const device = {
-      id: HOST_DEVICE_ID,
-      name: audit.hostname || "This computer",
-      kind: "computer",
-      platform: audit.platform,
-      platformLabel: audit.platformLabel,
-      source: "electron",
-      role: "host",
-      model: audit.model || null,
-      postureScore: audit.score,
-      scanPenalty: penalty,
-      score,
-      grade: gradeFor(score),
-      rulesVersion: audit.rulesVersion,
-      checkedAt,
-      lastSeen: checkedAt,
-      createdAt: existing ? existing.createdAt : checkedAt,
-      checks: audit.checks,
-      summary: {
-        passed: audit.passed,
-        attention: audit.attention,
-        unverified: audit.unverified
+      if (!result.supported) {
+        return res.status(501).json({
+          supported: false,
+          platform: result.platform,
+          message: result.message
+        });
       }
-    };
 
-    await store.devices.upsert(device);
-
-    await auditEntry(store, {
-      kind: "device",
-      message:
-        `Device check on ${device.name}: ${device.score}/100 (${device.grade}) · ` +
-        `${audit.passed} passed · ${audit.attention} need attention · ` +
-        `${audit.unverified} unverified` +
-        `${penalty ? ` · ${penalty} points from open threats` : ""}`,
-      severity: audit.attention > 0 ? "MEDIUM" : null
-    });
-
-    const devices = (await store.devices.all()).map(publicDoc);
-
-    return res.json({
-      device,
-      summary: protectionSummary(devices),
-      note:
-        "Checks are read-only. Settings are reported as found and were not changed."
-    });
+      return res.json({
+        device: result.device,
+        summary: result.summary,
+        note:
+          "Checks are read-only. Settings are reported as found and were not changed."
+      });
+    } catch (error) {
+      return sendError(res, next, error);
+    }
   });
 
   app.get("/api/scanner", async (_req, res) => {
@@ -757,6 +882,180 @@ function createApp({ store, dataDir }) {
       await auditEntry(store, { kind: "ai", message: "AI summary requested" });
 
       return res.json({ ...result, disclaimer: ai.DISCLAIMER });
+    } catch (error) {
+      return sendError(res, next, error);
+    }
+  });
+
+  // Grounded assistant. The snapshot comes from stored checks and scans; the AI
+  // only explains it. Without a configured endpoint the app still answers from facts.
+  function optionalAiConfig(body) {
+    if (!body || !body.ai) return null;
+    return ai.normalizeConfig(body.ai);
+  }
+
+  app.post("/api/assistant/suggest", async (req, res, next) => {
+    try {
+      const config = optionalAiConfig(req.body);
+      const state = await gatherAssistantState();
+      const recommendations = assistant.recommendationsFor(state);
+      let reply = null;
+      let model = null;
+      let aiError = null;
+
+      if (config) {
+        try {
+          const result = await ai.advise(config, state);
+          reply = result.reply;
+          model = result.model;
+        } catch (error) {
+          aiError = error.message;
+        }
+
+        await auditEntry(store, { kind: "ai", message: "AI suggestions requested" });
+      }
+
+      return res.json({
+        generatedAt: state.generatedAt,
+        snapshot: state,
+        recommendations,
+        ai: {
+          available: Boolean(config),
+          reply,
+          model,
+          error: aiError,
+          disclaimer: ai.DISCLAIMER
+        },
+        aiSetup: config
+          ? null
+          : "Connect an OpenAI-compatible endpoint in Settings to get AI suggestions. " +
+            "The recommendations above come from real checks and scans."
+      });
+    } catch (error) {
+      return sendError(res, next, error);
+    }
+  });
+
+  app.post("/api/assistant/security-test", async (_req, res, next) => {
+    try {
+      const run = await runSecurityTest();
+      const state = await gatherAssistantState();
+
+      return res.json({
+        ...run,
+        summary: assistant.testStartedAnswer(run),
+        snapshot: state,
+        recommendations: assistant.recommendationsFor(state)
+      });
+    } catch (error) {
+      return sendError(res, next, error);
+    }
+  });
+
+  app.post("/api/assistant/chat", async (req, res, next) => {
+    try {
+      const message = text(req.body?.message, 2000);
+
+      if (!message) {
+        return res.status(400).json({ error: "Ask a question or ask for a security test." });
+      }
+
+      const config = optionalAiConfig(req.body);
+      const history = req.body?.history;
+      const intent = assistant.detectIntent(message);
+
+      if (intent === "run-security-test") {
+        const run = await runSecurityTest();
+        const state = await gatherAssistantState();
+        const fallback = assistant.testStartedAnswer(run);
+        let reply = fallback;
+
+        if (config) {
+          try {
+            reply = (await ai.summarizeRun(config, state)).reply;
+          } catch (error) {
+            reply = `${fallback}\n\n(AI summary unavailable: ${error.message})`;
+          }
+
+          await auditEntry(store, { kind: "ai", message: "Security test summarized by AI" });
+        }
+
+        return res.json({
+          intent,
+          reply,
+          run,
+          snapshot: state,
+          recommendations: assistant.recommendationsFor(state),
+          ai: { available: Boolean(config), disclaimer: ai.DISCLAIMER }
+        });
+      }
+
+      const state = await gatherAssistantState();
+      const fallback =
+        intent === "threats"
+          ? assistant.threatsAnswer(state)
+          : assistant.statusAnswer(state);
+      let reply = fallback;
+      let aiError = null;
+
+      if (config) {
+        try {
+          reply = (
+            await ai.answerQuestion(config, { question: message, state, history })
+          ).reply;
+        } catch (error) {
+          aiError = error.message;
+          reply = `${fallback}\n\n(AI answer unavailable: ${error.message})`;
+        }
+
+        await auditEntry(store, { kind: "ai", message: "Assistant question answered" });
+      } else if (intent === "question") {
+        reply =
+          "I can report the verified status, list open detections, or run a security test. " +
+          "Connect an AI endpoint in Settings for free-form answers.\n\n" +
+          fallback;
+      }
+
+      return res.json({
+        intent,
+        reply,
+        snapshot: state,
+        recommendations: assistant.recommendationsFor(state),
+        ai: { available: Boolean(config), error: aiError, disclaimer: ai.DISCLAIMER }
+      });
+    } catch (error) {
+      return sendError(res, next, error);
+    }
+  });
+
+  app.post("/api/assistant/run-summary", async (req, res, next) => {
+    try {
+      const config = optionalAiConfig(req.body);
+      const state = await gatherAssistantState();
+      const summary = assistant.runSummary(state);
+
+      if (!config) {
+        return res.json({
+          summary,
+          ai: { available: false, disclaimer: ai.DISCLAIMER }
+        });
+      }
+
+      try {
+        const result = await ai.summarizeRun(config, state);
+        await auditEntry(store, { kind: "ai", message: "Scan results summarized by AI" });
+
+        return res.json({
+          summary: result.reply,
+          model: result.model,
+          ai: { available: true, disclaimer: ai.DISCLAIMER }
+        });
+      } catch (error) {
+        return res.json({
+          summary,
+          ai: { available: true, error: error.message, disclaimer: ai.DISCLAIMER }
+        });
+      }
     } catch (error) {
       return sendError(res, next, error);
     }

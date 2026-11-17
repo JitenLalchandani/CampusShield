@@ -13,15 +13,21 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 String _fixture(String name) => File('test/fixtures/$name.json').readAsStringSync();
 
+const _authStatus = '{"hasAccount":true,"signupOpen":false,'
+    '"user":{"id":"user-1","email":"owner@example.com","name":"Meera Patel","role":"owner"}}';
+
 http.Client _fixtureClient() {
   final protection = _fixture('protection');
   final summary = _fixture('summary');
   final activity = _fixture('activity');
+  final assistant = _fixture('assistant');
   return MockClient((request) async {
     final path = request.url.path;
+    if (path == '/api/auth/status') return _json(_authStatus);
     if (path == '/api/protection') return _json(protection);
     if (path == '/api/summary') return _json(summary);
     if (path == '/api/activity') return _json(activity);
+    if (path == '/api/assistant/suggest') return _json(assistant);
     return _json(jsonEncode({'error': 'not found'}), status: 404);
   });
 }
@@ -56,12 +62,33 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
+  testWidgets('opens on the assistant with grounded recommendations', (tester) async {
+    _sizeSurface(tester, const Size(1280, 900));
+    final state = await _loadedState();
+    addTearDown(state.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(theme: buildTheme(), home: Shell(state: state)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ask, then verify'), findsOneWidget);
+    expect(find.text('Security test'), findsOneWidget);
+    expect(find.text('Quarantine invoice.scr'), findsOneWidget);
+    expect(find.text('AI suggestions need an endpoint'), findsOneWidget);
+    expect(find.text('MP'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('renders the protection dashboard from live API payloads', (tester) async {
     _sizeSurface(tester, const Size(1280, 900));
     final state = await _loadedState();
     addTearDown(state.dispose);
 
     await _pumpShell(tester, state);
+
+    await tester.tap(find.byIcon(Icons.shield_outlined).first);
+    await tester.pump(const Duration(milliseconds: 50));
 
     expect(find.text('Device safety'), findsOneWidget);
     expect(find.text('Scanner ready'), findsOneWidget);
@@ -78,11 +105,11 @@ void main() {
     addTearDown(state.dispose);
     await _pumpShell(tester, state);
 
-    await tester.tap(find.byIcon(Icons.warning_amber_rounded).first);
+    await tester.tap(find.text('Threats'));
     await tester.pump(const Duration(milliseconds: 50));
     expect(find.text('Threat queue'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.history_rounded).first);
+    await tester.tap(find.text('Activity'));
     await tester.pump(const Duration(milliseconds: 50));
     expect(find.text('Activity'), findsWidgets);
     expect(tester.takeException(), isNull);
@@ -97,7 +124,7 @@ void main() {
 
     expect(find.byType(NavigationBar), findsOneWidget);
     expect(find.text('CampusShield'), findsOneWidget);
-    expect(find.text('Device safety'), findsOneWidget);
+    expect(find.text('Ask, then verify'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -113,8 +140,12 @@ void main() {
 
     await _pumpShell(tester, state);
 
-    expect(find.textContaining('Cannot reach the CampusShield API'), findsOneWidget);
+    expect(find.textContaining('Cannot reach the CampusShield API'), findsWidgets);
     expect(find.text('Offline'), findsWidgets);
+
+    await tester.tap(find.byIcon(Icons.shield_outlined).first);
+    await tester.pump(const Duration(milliseconds: 50));
     expect(find.text('Loading the cross-device score…'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

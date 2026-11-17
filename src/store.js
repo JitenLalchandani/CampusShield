@@ -11,6 +11,14 @@ class DuplicateIdError extends Error {
   }
 }
 
+class DuplicateEmailError extends Error {
+  constructor(email) {
+    super(`An account already uses ${email}`);
+    this.name = "DuplicateEmailError";
+    this.code = "DUPLICATE_EMAIL";
+  }
+}
+
 function copy(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
 }
@@ -34,7 +42,9 @@ function createJsonStore(dir) {
     devices: [],
     scans: [],
     quarantine: [],
-    settings: {}
+    settings: {},
+    users: [],
+    sessions: []
   };
   let loading = null;
   let writes = Promise.resolve();
@@ -60,6 +70,8 @@ function createJsonStore(dir) {
             parsed.settings && typeof parsed.settings === "object" && !Array.isArray(parsed.settings)
               ? parsed.settings
               : {};
+          state.users = Array.isArray(parsed.users) ? parsed.users : [];
+          state.sessions = Array.isArray(parsed.sessions) ? parsed.sessions : [];
         }
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
@@ -310,6 +322,127 @@ function createJsonStore(dir) {
       }
     },
 
+    users: {
+      async all() {
+        await load();
+        return state.users
+          .slice()
+          .sort((a, b) => Date.parse(a.createdAt || 0) - Date.parse(b.createdAt || 0))
+          .map(copy);
+      },
+      async get(id) {
+        await load();
+        return copy(state.users.find(user => user.id === id) || null);
+      },
+      async find(email) {
+        await load();
+        return copy(state.users.find(user => user.email === email) || null);
+      },
+      async count() {
+        await load();
+        return state.users.length;
+      },
+      async insert(user) {
+        await load();
+        if (state.users.some(existing => existing.id === user.id)) {
+          throw new DuplicateIdError(user.id);
+        }
+        if (state.users.some(existing => existing.email === user.email)) {
+          throw new DuplicateEmailError(user.email);
+        }
+        state.users.push(copy(user));
+        await persist();
+        return copy(user);
+      },
+      async update(id, patch) {
+        await load();
+        const index = state.users.findIndex(user => user.id === id);
+        if (index === -1) return null;
+        state.users[index] = { ...state.users[index], ...copy(patch) };
+        await persist();
+        return copy(state.users[index]);
+      },
+      async remove(id) {
+        await load();
+        const index = state.users.findIndex(user => user.id === id);
+        if (index === -1) return false;
+        state.users.splice(index, 1);
+        await persist();
+        return true;
+      },
+      async clear() {
+        await load();
+        const deleted = state.users.length;
+        state.users = [];
+        await persist();
+        return deleted;
+      }
+    },
+
+    sessions: {
+      async get(id) {
+        await load();
+        return copy(state.sessions.find(session => session.id === id) || null);
+      },
+      async findByToken(tokenHash) {
+        await load();
+        return copy(state.sessions.find(session => session.tokenHash === tokenHash) || null);
+      },
+      async count() {
+        await load();
+        return state.sessions.length;
+      },
+      async insert(session) {
+        await load();
+        state.sessions.push(copy(session));
+        await persist();
+        return copy(session);
+      },
+      async update(id, patch) {
+        await load();
+        const index = state.sessions.findIndex(session => session.id === id);
+        if (index === -1) return null;
+        state.sessions[index] = { ...state.sessions[index], ...copy(patch) };
+        await persist();
+        return copy(state.sessions[index]);
+      },
+      async remove(id) {
+        await load();
+        const index = state.sessions.findIndex(session => session.id === id);
+        if (index === -1) return false;
+        state.sessions.splice(index, 1);
+        await persist();
+        return true;
+      },
+      async removeForUser(userId, exceptId = null) {
+        await load();
+        const before = state.sessions.length;
+        state.sessions = state.sessions.filter(
+          session => session.userId !== userId || (exceptId && session.id === exceptId)
+        );
+        const removed = before - state.sessions.length;
+        if (removed) await persist();
+        return removed;
+      },
+      async removeExpired(nowIso) {
+        await load();
+        const before = state.sessions.length;
+        state.sessions = state.sessions.filter(
+          session => Date.parse(session.expiresAt || 0) > Date.parse(nowIso)
+        );
+        const removed = before - state.sessions.length;
+        if (removed) await persist();
+        return removed;
+      },
+      async clear() {
+        await load();
+        const deleted = state.sessions.length;
+        state.sessions = [];
+        await persist();
+        return deleted;
+      }
+    },
+
     async close() {}
   };
 }
@@ -324,6 +457,8 @@ function createMongoStore(uri) {
   let scans;
   let quarantine;
   let settings;
+  let users;
+  let sessions;
 
   return {
     kind: "mongodb",
@@ -345,6 +480,8 @@ function createMongoStore(uri) {
       scans = db.collection("scans");
       quarantine = db.collection("quarantine");
       settings = db.collection("settings");
+      users = db.collection("users");
+      sessions = db.collection("sessions");
 
       await Promise.all([
         events.createIndex({ id: 1 }, { unique: true }),
@@ -355,7 +492,13 @@ function createMongoStore(uri) {
         scans.createIndex({ id: 1 }, { unique: true }),
         scans.createIndex({ startedAt: -1 }),
         quarantine.createIndex({ id: 1 }, { unique: true }),
-        quarantine.createIndex({ quarantinedAt: -1 })
+        quarantine.createIndex({ quarantinedAt: -1 }),
+        users.createIndex({ id: 1 }, { unique: true }),
+        users.createIndex({ email: 1 }, { unique: true }),
+        sessions.createIndex({ id: 1 }, { unique: true }),
+        sessions.createIndex({ tokenHash: 1 }, { unique: true }),
+        sessions.createIndex({ userId: 1 }),
+        sessions.createIndex({ expiresAt: 1 })
       ]);
     },
 
@@ -516,10 +659,93 @@ function createMongoStore(uri) {
       }
     },
 
+    users: {
+      async all() {
+        return users.find({}).sort({ createdAt: 1 }).toArray();
+      },
+      async get(id) {
+        return users.findOne({ id });
+      },
+      async find(email) {
+        return users.findOne({ email });
+      },
+      async count() {
+        return users.countDocuments({});
+      },
+      async insert(user) {
+        try {
+          await users.insertOne(user);
+        } catch (error) {
+          if (error.code === 11000 && /email/.test(String(error.message))) {
+            throw new DuplicateEmailError(user.email);
+          }
+          throw error;
+        }
+        return user;
+      },
+      async update(id, patch) {
+        const result = await users.findOneAndUpdate(
+          { id },
+          { $set: patch },
+          { returnDocument: "after" }
+        );
+        return result || null;
+      },
+      async remove(id) {
+        const result = await users.deleteOne({ id });
+        return result.deletedCount > 0;
+      },
+      async clear() {
+        const result = await users.deleteMany({});
+        return result.deletedCount;
+      }
+    },
+
+    sessions: {
+      async get(id) {
+        return sessions.findOne({ id });
+      },
+      async findByToken(tokenHash) {
+        return sessions.findOne({ tokenHash });
+      },
+      async count() {
+        return sessions.countDocuments({});
+      },
+      async insert(session) {
+        await sessions.insertOne(session);
+        return session;
+      },
+      async update(id, patch) {
+        const result = await sessions.findOneAndUpdate(
+          { id },
+          { $set: patch },
+          { returnDocument: "after" }
+        );
+        return result || null;
+      },
+      async remove(id) {
+        const result = await sessions.deleteOne({ id });
+        return result.deletedCount > 0;
+      },
+      async removeForUser(userId, exceptId = null) {
+        const filter = exceptId ? { userId, id: { $ne: exceptId } } : { userId };
+        const result = await sessions.deleteMany(filter);
+        return result.deletedCount;
+      },
+      async removeExpired(nowIso) {
+        const result = await sessions.deleteMany({ expiresAt: { $lte: nowIso } });
+        return result.deletedCount;
+      },
+      async clear() {
+        const result = await sessions.deleteMany({});
+        return result.deletedCount;
+      }
+    },
+
     async close() {
       if (client) await client.close();
     }
   };
 }
 
-module.exports = { createStore, DuplicateIdError };
+module.exports = { createStore, DuplicateIdError, DuplicateEmailError };

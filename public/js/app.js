@@ -1,23 +1,35 @@
-import { api, getApiBase, getSettings, isDesktopShell, isNativeShell } from "./api.js";
+import { api, clearSessionToken, getApiBase, getSettings, isDesktopShell, isNativeShell } from "./api.js";
+import { fetchAuthStatus, renderAuthGate } from "./auth.js";
 import { closeEvent, openEvent } from "./drawer.js";
 import { icon, toast } from "./ui.js";
+import * as assistantView from "./views/assistant.js";
 import * as protection from "./views/protection.js";
 import * as threats from "./views/threats.js";
 import * as activity from "./views/activity.js";
 import * as coverage from "./views/coverage.js";
 import * as settings from "./views/settings.js";
 
-const routes = { protection, threats, activity, coverage, settings };
+const routes = {
+  assistant: assistantView,
+  protection,
+  threats,
+  activity,
+  coverage,
+  settings
+};
 
 let health = null;
 let currentName = null;
 let lastRenderAt = 0;
 let scanning = false;
+let signedUser = null;
+let gateActive = false;
+let autoRefreshStarted = false;
 
 function routeName() {
-  const raw = (location.hash.replace(/^#\/?/, "") || "protection").split("?")[0];
+  const raw = (location.hash.replace(/^#\/?/, "") || "assistant").split("?")[0];
   const name = raw === "dashboard" ? "protection" : raw;
-  return Object.hasOwn(routes, name) ? name : "protection";
+  return Object.hasOwn(routes, name) ? name : "assistant";
 }
 
 function setActiveNav(name) {
@@ -115,6 +127,11 @@ async function refreshHealth() {
   } catch (error) {
     health = null;
     const locked = error?.status === 401;
+
+    if (error?.code === "auth_required") {
+      handleAuthRequired();
+      return;
+    }
 
     pill?.classList.remove("online");
     if (pillDot) pillDot.className = "dot off";
@@ -216,9 +233,13 @@ function renderBanner() {
 }
 
 function startAutoRefresh() {
+  if (autoRefreshStarted) return;
+  autoRefreshStarted = true;
+
   window.setInterval(() => {
     const preferences = getSettings();
 
+    if (!signedUser) return;
     if (!preferences.autoRefresh) return;
     if (document.visibilityState !== "visible") return;
     if (currentName !== "protection") return;
@@ -244,9 +265,102 @@ function registerServiceWorker() {
   });
 }
 
+function initialsFor(name, email) {
+  const source = String(name || email || "").trim();
+  const parts = source.split(/[\s@.]+/).filter(Boolean);
+
+  if (!parts.length) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+function paintAccount() {
+  const pill = document.getElementById("accountPill");
+
+  if (!pill) return;
+
+  if (!signedUser) {
+    pill.hidden = true;
+    return;
+  }
+
+  pill.hidden = false;
+  pill.title = `${signedUser.name || signedUser.email} · ${signedUser.role === "owner" ? "Owner" : "Member"}`;
+
+  const initials = document.getElementById("accountInitials");
+  const email = document.getElementById("accountEmail");
+
+  if (initials) initials.textContent = initialsFor(signedUser.name, signedUser.email);
+  if (email) email.textContent = signedUser.email;
+}
+
+function enterApp() {
+  gateActive = false;
+  document.body.classList.remove("auth-gate");
+  document.getElementById("authRoot").innerHTML = "";
+  paintAccount();
+
+  refreshHealth();
+  renderRoute({ silent: true });
+  startAutoRefresh();
+}
+
+async function enterAuthGate({ error = "" } = {}) {
+  if (gateActive) return;
+  gateActive = true;
+
+  document.body.classList.add("auth-gate");
+
+  const root = document.getElementById("authRoot");
+  let status = null;
+  let failure = error;
+
+  try {
+    status = await fetchAuthStatus();
+  } catch (failure_) {
+    failure = failure || failure_.message;
+  }
+
+  if (status?.user && !failure) {
+    signedUser = status.user;
+    enterApp();
+    return;
+  }
+
+  renderAuthGate(root, {
+    status,
+    error: failure,
+    onSignedIn: result => {
+      signedUser = result.user;
+      enterApp();
+    }
+  });
+}
+
+function handleAuthRequired() {
+  if (!signedUser && gateActive) return;
+
+  clearSessionToken();
+  signedUser = null;
+  currentName = null;
+  health = null;
+
+  enterAuthGate({ error: "Your session ended. Sign in again to keep using CampusShield." });
+}
+
+function handleSignedOut() {
+  clearSessionToken();
+  signedUser = null;
+  currentName = null;
+  health = null;
+  gateActive = false;
+
+  enterAuthGate({ error: "You signed out. Sign in to continue." });
+}
+
 function init() {
   if (!location.hash) {
-    history.replaceState(null, "", "#/protection");
+    history.replaceState(null, "", "#/assistant");
   } else if (location.hash.startsWith("#/dashboard")) {
     history.replaceState(null, "", "#/protection");
   }
@@ -259,6 +373,10 @@ function init() {
   });
 
   document.getElementById("deviceCheckBtn")?.addEventListener("click", runDeviceCheck);
+
+  document.getElementById("accountPill")?.addEventListener("click", () => {
+    location.hash = "#/settings";
+  });
 
   document.addEventListener("click", event => {
     const trigger = event.target.closest("[data-event-id]");
@@ -278,25 +396,36 @@ function init() {
     }
   });
 
-  window.addEventListener("hashchange", () => renderRoute());
+  window.addEventListener("hashchange", () => {
+    if (signedUser) renderRoute();
+  });
+
   window.addEventListener("resize", renderBanner);
 
   window.addEventListener("campusshield:api-changed", async () => {
     renderBanner();
-    await refreshHealth();
+
+    if (signedUser) await refreshHealth();
   });
 
   window.addEventListener("campusshield:data-changed", async () => {
+    if (!signedUser) return;
+
     await refreshHealth();
     await renderRoute({ silent: true });
   });
 
+  window.addEventListener("campusshield:health-refresh", () => {
+    if (signedUser) refreshHealth();
+  });
+
+  window.addEventListener("campusshield:auth-required", handleAuthRequired);
+  window.addEventListener("campusshield:signed-out", handleSignedOut);
+
   renderBanner();
   registerServiceWorker();
 
-  refreshHealth();
-  renderRoute({ silent: true });
-  startAutoRefresh();
+  enterAuthGate();
 }
 
 if (document.readyState === "loading") {
