@@ -849,28 +849,110 @@ class AssistantAi {
       );
 }
 
+class NetworkService {
+  const NetworkService({
+    required this.protocol,
+    required this.address,
+    required this.port,
+    required this.scope,
+    required this.process,
+    required this.service,
+    required this.risky,
+    required this.riskNote,
+  });
+
+  final String protocol;
+  final String address;
+  final int port;
+  final String scope;
+  final String? process;
+  final String? service;
+  final bool risky;
+  final String? riskNote;
+
+  String get endpoint => '$protocol $port';
+
+  factory NetworkService.fromJson(Map<String, dynamic> json) => NetworkService(
+        protocol: _text(json['protocol']).toUpperCase(),
+        address: _text(json['address'], 'unknown'),
+        port: _toInt(json['port']),
+        scope: _text(json['scope'], 'unknown'),
+        process: json['process'] == null ? null : _text(json['process']),
+        service: json['service'] == null ? null : _text(json['service']),
+        risky: json['risky'] == true,
+        riskNote: json['riskNote'] == null ? null : _text(json['riskNote']),
+      );
+}
+
+class NetworkSnapshot {
+  const NetworkSnapshot({
+    required this.supported,
+    required this.readAt,
+    required this.error,
+    required this.total,
+    required this.networkBound,
+    required this.loopbackOnly,
+    required this.riskyCount,
+    required this.services,
+    required this.notes,
+  });
+
+  final bool supported;
+  final DateTime? readAt;
+  final String? error;
+  final int total;
+  final int networkBound;
+  final int loopbackOnly;
+  final int riskyCount;
+  final List<NetworkService> services;
+  final List<String> notes;
+
+  factory NetworkSnapshot.fromJson(Map<String, dynamic> json) => NetworkSnapshot(
+        supported: json['supported'] == true,
+        readAt: _date(json['readAt']),
+        error: json['error'] == null ? null : _text(json['error']),
+        total: _toInt(json['total']),
+        networkBound: _toInt(json['networkBound']),
+        loopbackOnly: _toInt(json['loopbackOnly']),
+        riskyCount: _toInt(json['riskyCount']),
+        services: _list(json['services'])
+            .whereType<Map>()
+            .map((item) => NetworkService.fromJson(Map<String, dynamic>.from(item)))
+            .toList(),
+        notes: _list(json['notes']).map((note) => _text(note)).toList(),
+      );
+}
+
 class AssistantSuggestion {
   const AssistantSuggestion({
     required this.generatedAt,
     required this.recommendations,
     required this.ai,
     required this.aiSetup,
+    this.network,
   });
 
   final DateTime? generatedAt;
   final List<AssistantRecommendation> recommendations;
   final AssistantAi ai;
   final String? aiSetup;
+  final NetworkSnapshot? network;
 
-  factory AssistantSuggestion.fromJson(Map<String, dynamic> json) => AssistantSuggestion(
-        generatedAt: _date(json['generatedAt']),
-        recommendations: _list(json['recommendations'])
-            .whereType<Map>()
-            .map((item) => AssistantRecommendation.fromJson(Map<String, dynamic>.from(item)))
-            .toList(),
-        ai: AssistantAi.fromJson(_map(json['ai'])),
-        aiSetup: json['aiSetup'] == null ? null : _text(json['aiSetup']),
-      );
+  factory AssistantSuggestion.fromJson(Map<String, dynamic> json) {
+    final snapshot = _map(json['snapshot']);
+    return AssistantSuggestion(
+      generatedAt: _date(json['generatedAt']),
+      recommendations: _list(json['recommendations'])
+          .whereType<Map>()
+          .map((item) => AssistantRecommendation.fromJson(Map<String, dynamic>.from(item)))
+          .toList(),
+      ai: AssistantAi.fromJson(_map(json['ai'])),
+      aiSetup: json['aiSetup'] == null ? null : _text(json['aiSetup']),
+      network: snapshot['network'] is Map
+          ? NetworkSnapshot.fromJson(Map<String, dynamic>.from(snapshot['network'] as Map))
+          : null,
+    );
+  }
 }
 
 class AssistantTestResult {
@@ -880,6 +962,7 @@ class AssistantTestResult {
     required this.checkMessage,
     required this.scan,
     required this.scanError,
+    required this.network,
     required this.summary,
     required this.recommendations,
   });
@@ -889,6 +972,7 @@ class AssistantTestResult {
   final String? checkMessage;
   final ScanRecord? scan;
   final String? scanError;
+  final NetworkSnapshot? network;
   final String summary;
   final List<AssistantRecommendation> recommendations;
 
@@ -900,6 +984,9 @@ class AssistantTestResult {
       checkMessage: check['message'] == null ? null : _text(check['message']),
       scan: json['scan'] is Map ? ScanRecord.fromJson(_map(json['scan'])) : null,
       scanError: json['scanError'] == null ? null : _text(json['scanError']),
+      network: json['network'] is Map
+          ? NetworkSnapshot.fromJson(Map<String, dynamic>.from(json['network'] as Map))
+          : null,
       summary: _text(json['summary']),
       recommendations: _list(json['recommendations'])
           .whereType<Map>()

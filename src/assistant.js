@@ -31,9 +31,47 @@ function daysSince(iso) {
   return (Date.now() - time) / (24 * 60 * 60 * 1000);
 }
 
+// The socket table is reported, never scored. Only network-reachable entries
+// are kept in the assistant snapshot; loopback listeners are counted.
+function networkLite(network) {
+  if (!network) return null;
+
+  return {
+    supported: Boolean(network.supported),
+    readAt: network.readAt || null,
+    error: network.error || null,
+    total: Number(network.total) || 0,
+    networkBound: Number(network.networkBound) || 0,
+    loopbackOnly: Number(network.loopbackOnly) || 0,
+    riskyCount: Number(network.riskyCount) || 0,
+    services: (network.services || [])
+      .filter(service => service.scope === "network")
+      .slice(0, 12)
+      .map(service => ({
+        protocol: clip(service.protocol, 4),
+        address: clip(service.address, 60),
+        port: Number(service.port) || 0,
+        scope: "network",
+        process: service.process ? clip(service.process, 80) : null,
+        pid: Number.isFinite(service.pid) ? service.pid : null,
+        service: service.service ? clip(service.service, 60) : null,
+        risky: Boolean(service.risky),
+        riskNote: service.riskNote ? clip(service.riskNote, 240) : null
+      })),
+    findings: (network.findings || []).slice(0, 10).map(finding => ({
+      id: clip(finding.id, 80),
+      title: clip(finding.title, 160),
+      severity: clip(finding.severity, 20),
+      detail: clip(finding.detail, 300),
+      why: clip(finding.why, 300)
+    })),
+    notes: (network.notes || []).slice(0, 2).map(note => clip(note, 240))
+  };
+}
+
 // Turns stored records into the exact facts the assistant is allowed to use.
 // Nothing here is generated or estimated; missing data stays null.
-function describeState({ devices = [], status = {}, scans = [], quarantine = [], platform = null, protection = null } = {}) {
+function describeState({ devices = [], status = {}, scans = [], quarantine = [], network = null, platform = null, protection = null } = {}) {
   const openThreats = [];
 
   for (const scan of scans) {
@@ -119,6 +157,7 @@ function describeState({ devices = [], status = {}, scans = [], quarantine = [],
     lastScan: lastScan ? scanLite(lastScan) : null,
     lastScanAgeDays: lastScan ? daysSince(lastScan.finishedAt || lastScan.startedAt) : null,
     openThreats,
+    network: networkLite(network),
     quarantine: {
       count: quarantine.length,
       items: quarantine.slice(0, 5).map(item => ({
@@ -163,6 +202,44 @@ function recommendationsFor(state) {
       detail: check.recommendation || check.detail || "Review this setting on the device.",
       severity: check.severity === "critical" || check.severity === "high" ? "HIGH" : "MEDIUM",
       action: { kind: "open-protection", checkId: check.id }
+    });
+  }
+
+  if (state.network?.supported) {
+    for (const finding of state.network.findings.slice(0, 2)) {
+      recs.push({
+        id: `exposure-${finding.id}`,
+        title: finding.title,
+        detail: finding.why || finding.detail || "A sensitive service is reachable from the network.",
+        severity: "MEDIUM",
+        action: { kind: "open-exposure" }
+      });
+    }
+
+    if (!state.network.riskyCount && state.network.networkBound) {
+      const named = state.network.services
+        .slice(0, 3)
+        .map(service => `${service.service || "listener"} on ${service.port}`)
+        .join(", ");
+
+      recs.push({
+        id: "exposure-review",
+        title: `${state.network.networkBound} service(s) accept connections from the network`,
+        detail:
+          `Listening sockets were read, not scored. Close or firewall anything you did not mean to share${
+            named ? `: ${named}` : ""
+          }.`,
+        severity: "info",
+        action: { kind: "open-exposure" }
+      });
+    }
+  } else if (state.network && state.network.error) {
+    recs.push({
+      id: "exposure-unavailable",
+      title: "Network exposure could not be checked",
+      detail: state.network.error,
+      severity: "info",
+      action: { kind: "open-exposure" }
     });
   }
 
@@ -240,6 +317,22 @@ function timeLabel(iso) {
   return Number.isFinite(time) ? new Date(time).toUTCString() : "unknown time";
 }
 
+function networkAnswerLine(network) {
+  if (!network) return "Network exposure has not been checked yet.";
+  if (!network.supported) {
+    return `Network exposure could not be checked: ${network.error || "the socket table was unreadable"}.`;
+  }
+
+  const head =
+    `${network.total} listening socket(s): ${network.networkBound} reachable from the network, ` +
+    `${network.loopbackOnly} loopback-only`;
+  const risky = (network.findings || []).length
+    ? `. Sensitive: ${network.findings.slice(0, 3).map(finding => finding.title).join(", ")}`
+    : "";
+
+  return `${head}${risky}. No port was contacted or scored; this is the socket table as read.`;
+}
+
 function statusAnswer(state) {
   if (!state.host || !Number.isFinite(state.host.score)) {
     return [
@@ -283,6 +376,8 @@ function statusAnswer(state) {
       : `Recorded scans show no unhandled detection right now; ${state.quarantine.count} item(s) are in quarantine.`
   );
 
+  lines.push(networkAnswerLine(state.network));
+
   return lines.join("\n\n");
 }
 
@@ -309,6 +404,7 @@ function threatsAnswer(state) {
   }
 
   lines.push("Quarantining moves the file into the local vault. Nothing is uploaded.");
+  lines.push(networkAnswerLine(state.network));
   return lines.join("\n");
 }
 
@@ -336,6 +432,10 @@ function testStartedAnswer(run) {
     );
   } else {
     lines.push(run.scanError || "A file scan could not be started.");
+  }
+
+  if (run.network) {
+    lines.push(`Network check: ${networkAnswerLine(run.network)}`);
   }
 
   lines.push("Scores and detections come from the local checks only; nothing is estimated.");

@@ -32,6 +32,23 @@
     "lastScan": null,
     "lastScanAgeDays": null,
     "openThreats": [],
+    "network": {
+      "supported": true,
+      "readAt": "2026-11-18T09:12:00.000Z",
+      "error": null,
+      "total": 4,
+      "networkBound": 2,
+      "loopbackOnly": 2,
+      "riskyCount": 0,
+      "services": [
+        { "protocol": "TCP", "address": "*", "port": 5000, "scope": "network", "process": "ControlCe", "pid": 611, "service": "Development web server", "risky": false, "riskNote": null },
+        { "protocol": "UDP", "address": "*", "port": 59376, "scope": "network", "process": "replicato", "pid": 720, "service": null, "risky": false, "riskNote": null },
+        { "protocol": "TCP", "address": "127.0.0.1", "port": 27017, "scope": "loopback", "process": "mongod", "pid": 512, "service": "MongoDB", "risky": false, "riskNote": null },
+        { "protocol": "TCP", "address": "127.0.0.1", "port": 15292, "scope": "loopback", "process": "Adobe", "pid": 480, "service": null, "risky": false, "riskNote": null }
+      ],
+      "findings": [],
+      "notes": ["Sockets owned by other users or system daemons can be hidden unless the server runs as root."]
+    },
     "quarantine": { "count": 0, "items": [] }
   },
   "recommendations": [

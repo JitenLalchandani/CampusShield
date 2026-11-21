@@ -369,10 +369,11 @@ class ApiClient {
     return AssistantReply.fromJson(payload);
   }
 
-  Future<AssistantTestResult> securityTest() async {
+  Future<AssistantTestResult> securityTest({String scope = 'full'}) async {
     final payload = mapFrom(await _send(
       'POST',
       '/api/assistant/security-test',
+      body: {'scope': scope},
       timeout: const Duration(seconds: 60),
     ));
     return AssistantTestResult.fromJson(payload);

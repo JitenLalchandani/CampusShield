@@ -12,6 +12,7 @@ const { createScannerService } = require("./scanner/manager");
 const ai = require("./ai");
 const auth = require("./auth");
 const assistant = require("./assistant");
+const { collectNetworkExposure } = require("./networkAudit");
 
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
 const ACTIONS = ["Investigate", "Contain", "Reopen"];
@@ -379,12 +380,39 @@ function createApp({ store, dataDir }) {
     };
   }
 
+  async function readNetworkSnapshot() {
+    const settings = await store.settings.get();
+    return settings.network || null;
+  }
+
+  async function saveNetworkSnapshot(snapshot) {
+    await store.settings.save({ network: snapshot });
+    return snapshot;
+  }
+
+  function unavailableNetwork(error) {
+    return {
+      supported: false,
+      readAt: new Date().toISOString(),
+      platform: process.platform,
+      total: 0,
+      networkBound: 0,
+      loopbackOnly: 0,
+      riskyCount: 0,
+      services: [],
+      findings: [],
+      notes: [],
+      error: error.message
+    };
+  }
+
   async function gatherAssistantState() {
-    const [devices, status, scans, quarantine] = await Promise.all([
+    const [devices, status, scans, quarantine, network] = await Promise.all([
       store.devices.all().then(items => items.map(publicDoc)),
       scanner.status(),
       scanner.listScans(5),
-      scanner.listQuarantine()
+      scanner.listQuarantine(),
+      readNetworkSnapshot()
     ]);
 
     return assistant.describeState({
@@ -392,14 +420,17 @@ function createApp({ store, dataDir }) {
       status,
       scans,
       quarantine,
+      network,
       platform: platformLabel(process.platform),
       protection: protectionSummary(devices)
     });
   }
 
-  // One security test: a real device check plus a real quick file scan.
-  // The scan keeps running in the background; the caller polls /api/scans/:id.
-  async function runSecurityTest() {
+  // One security test: a real device check, a real file scan of the chosen
+  // scope, and a read-only read of the listening socket table. The scan keeps
+  // running in the background; the caller polls /api/scans/:id.
+  async function runSecurityTest({ scope = "full" } = {}) {
+    const scanScope = scope === "quick" ? "quick" : "full";
     let check;
 
     if (deviceAuditAvailable()) {
@@ -423,7 +454,7 @@ function createApp({ store, dataDir }) {
     let scanError = null;
 
     try {
-      scan = await scanner.startScan({ scope: "quick", trigger: "manual" });
+      scan = await scanner.startScan({ scope: scanScope, trigger: "manual" });
     } catch (error) {
       scanError =
         error.statusCode === 409
@@ -435,19 +466,33 @@ function createApp({ store, dataDir }) {
       }
     }
 
+    let network;
+    try {
+      network = await saveNetworkSnapshot(await collectNetworkExposure());
+    } catch (error) {
+      console.error("Network exposure audit failed:", error.message);
+      network = await saveNetworkSnapshot(unavailableNetwork(error));
+    }
+
+    const exposure = network.supported
+      ? `socket table read: ${network.total} listener(s), ${network.networkBound} reachable from the network, ${network.riskyCount} sensitive`
+      : `socket table unavailable (${network.error})`;
+
     await auditEntry(store, {
       kind: "security-test",
       message:
         `Security test: ${
           check.supported ? `device check ${check.device.score}/100 (${check.device.grade})` : "device check unavailable"
-        }, ${scan ? "quick scan started" : scanError}`
+        }, ${scan ? `${scanScope} scan started` : scanError}, ${exposure}`
     });
 
     return {
       device: check.device,
       check: { supported: check.supported, message: check.message },
       scan,
-      scanError
+      scanError,
+      network,
+      scope: scanScope
     };
   }
 
@@ -613,11 +658,12 @@ function createApp({ store, dataDir }) {
   });
 
   app.get("/api/protection", async (_req, res) => {
-    const [devices, scannerStatus, scans, quarantine] = await Promise.all([
+    const [devices, scannerStatus, scans, quarantine, network] = await Promise.all([
       store.devices.all().then(items => items.map(publicDoc)),
       scanner.status(),
       scanner.listScans(20),
-      scanner.listQuarantine()
+      scanner.listQuarantine(),
+      readNetworkSnapshot()
     ]);
 
     res.json({
@@ -626,6 +672,7 @@ function createApp({ store, dataDir }) {
       scanner: scannerStatus,
       scans,
       quarantine,
+      network,
       rulesVersion: RULES_VERSION,
       auditAvailable: deviceAuditAvailable(),
       platform: process.platform,
@@ -936,9 +983,10 @@ function createApp({ store, dataDir }) {
     }
   });
 
-  app.post("/api/assistant/security-test", async (_req, res, next) => {
+  app.post("/api/assistant/security-test", async (req, res, next) => {
     try {
-      const run = await runSecurityTest();
+      const scope = req.body?.scope === "quick" ? "quick" : "full";
+      const run = await runSecurityTest({ scope });
       const state = await gatherAssistantState();
 
       return res.json({

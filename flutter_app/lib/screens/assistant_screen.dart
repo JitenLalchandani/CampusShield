@@ -31,6 +31,8 @@ class _ChatMessage {
 
 class _AssistantScreenState extends State<AssistantScreen> {
   final _chat = TextEditingController();
+  final _scroll = ScrollController();
+  final GlobalKey _networkKey = GlobalKey();
   final List<_ChatMessage> _messages = [];
 
   AssistantSuggestion? _suggestion;
@@ -39,6 +41,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
 
   AssistantTestResult? _test;
   bool _testing = false;
+  String _runScope = 'full';
   String? _testError;
   String? _summary;
   String? _summaryForScan;
@@ -56,6 +59,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
   @override
   void dispose() {
     _chat.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -84,18 +88,19 @@ class _AssistantScreenState extends State<AssistantScreen> {
     }
   }
 
-  Future<void> _runTest() async {
+  Future<void> _runTest({String scope = 'full'}) async {
     if (_testing) return;
 
     setState(() {
       _testing = true;
+      _runScope = scope;
       _testError = null;
       _summary = null;
       _summaryForScan = null;
     });
 
     try {
-      final result = await widget.state.runSecurityTest();
+      final result = await widget.state.runSecurityTest(scope: scope);
       if (!mounted) return;
       setState(() {
         _test = result;
@@ -152,6 +157,17 @@ class _AssistantScreenState extends State<AssistantScreen> {
     }
     if (action.kind == 'open-settings' || action.kind == 'schedule-scan') {
       widget.onNavigate(5);
+      return;
+    }
+    if (action.kind == 'open-exposure') {
+      final networkContext = _networkKey.currentContext;
+      if (networkContext != null) {
+        Scrollable.ensureVisible(
+          networkContext,
+          duration: const Duration(milliseconds: 350),
+          alignment: 0.08,
+        );
+      }
       return;
     }
 
@@ -221,6 +237,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
             recommendations: reply.recommendations,
             ai: reply.ai,
             aiSetup: _suggestion?.aiSetup,
+            network: _suggestion?.network,
           );
         });
       }
@@ -242,14 +259,15 @@ class _AssistantScreenState extends State<AssistantScreen> {
     _maybeLoadSummary();
 
     return ListView(
+      controller: _scroll,
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
       children: [
         PageHeader(
-          eyebrow: 'Assistant',
-          title: 'Ask, then verify',
+          eyebrow: 'Protection assistant',
+          title: 'How to stay protected',
           subtitle:
-              'Suggestions come from stored checks and scans. Run the security test to refresh them with '
-              'real results from this server.',
+              'Guidance built from real device checks, file scans, and listening ports. Run a scan to '
+              'refresh it; the AI only explains the facts.',
           actions: [
             OutlinedButton.icon(
               onPressed: _loading ? null : () => _loadSuggestions(),
@@ -260,6 +278,8 @@ class _AssistantScreenState extends State<AssistantScreen> {
         ),
         const SizedBox(height: 18),
         _testCard(),
+        const SizedBox(height: 18),
+        _networkCard(),
         const SizedBox(height: 18),
         _aiCard(),
         const SizedBox(height: 18),
@@ -273,6 +293,14 @@ class _AssistantScreenState extends State<AssistantScreen> {
   Widget _testCard() {
     final scan = _testScan;
     final test = _test;
+    final scopeLabel = scan == null
+        ? 'Full'
+        : scan.scope == 'quick'
+            ? 'Quick'
+            : scan.scope == 'custom'
+                ? 'Custom'
+                : 'Full';
+    final busyLabel = _runScope == 'quick' ? 'Quick scan running…' : 'Full scan running…';
 
     return CsCard(
       child: Column(
@@ -293,10 +321,11 @@ class _AssistantScreenState extends State<AssistantScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Security test', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                    Text('Security scan', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                     SizedBox(height: 3),
                     Text(
-                      'A read-only device check plus a quick file scan, run now on the server host.',
+                      'A read-only device check, a full file scan of this home folder, and a read of '
+                      'every listening port. Nothing is estimated.',
                       style: TextStyle(color: CsColors.muted, fontSize: 12.5, height: 1.4),
                     ),
                   ],
@@ -310,7 +339,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
             runSpacing: 10,
             children: [
               FilledButton.icon(
-                onPressed: _testing || widget.state.activeScan != null ? null : _runTest,
+                onPressed: _testing || widget.state.activeScan != null ? null : () => _runTest(),
                 icon: _testing
                     ? const SizedBox(
                         width: 16,
@@ -318,7 +347,20 @@ class _AssistantScreenState extends State<AssistantScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF04121F)),
                       )
                     : const Icon(Icons.play_arrow_rounded, size: 20),
-                label: Text(_testing ? 'Running checks…' : test == null ? 'Run security test' : 'Run again'),
+                label: Text(
+                  _testing
+                      ? busyLabel
+                      : test == null
+                          ? 'Run full scan'
+                          : 'Run full scan again',
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: _testing || widget.state.activeScan != null
+                    ? null
+                    : () => _runTest(scope: 'quick'),
+                icon: const Icon(Icons.bolt_rounded, size: 18),
+                label: const Text('Quick scan'),
               ),
               if (widget.state.activeScan != null)
                 Padding(
@@ -379,8 +421,8 @@ class _AssistantScreenState extends State<AssistantScreen> {
                   Expanded(
                     child: Text(
                       scan.isRunning
-                          ? 'Quick scan running · ${scan.filesScanned} files so far'
-                          : 'Quick scan ${scan.status} · ${scan.filesScanned} files · '
+                          ? '$scopeLabel scan running · ${scan.filesScanned} files so far'
+                          : '$scopeLabel scan ${scan.status} · ${scan.filesScanned} files · '
                               '${scan.threatCount} detection(s)',
                       style: const TextStyle(fontSize: 12.5),
                     ),
@@ -427,6 +469,138 @@ class _AssistantScreenState extends State<AssistantScreen> {
                 ),
               ),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _networkCard() {
+    final network = _test?.network ?? _suggestion?.network;
+    final services = network?.services.where((service) => service.scope == 'network').toList() ?? const <NetworkService>[];
+
+    return CsCard(
+      key: _networkKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SectionTitle(
+            title: 'Network exposure',
+            caption: network == null
+                ? 'No port audit has run yet'
+                : network.supported
+                    ? 'Read ${_timeLabel(network.readAt)} from the socket table'
+                    : 'The socket table could not be read',
+          ),
+          const SizedBox(height: 12),
+          if (network == null)
+            const Text(
+              'Run a full scan to read every listening socket on this computer. Ports are reported, never probed.',
+              style: TextStyle(color: CsColors.muted, fontSize: 12.5, height: 1.45),
+            )
+          else if (!network.supported)
+            Text(
+              network.error ?? 'Listening sockets could not be read on this host.',
+              style: const TextStyle(color: CsColors.amber, fontSize: 12.5, height: 1.45),
+            )
+          else ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                Pill(label: '${network.total} listeners', color: CsColors.primary),
+                Pill(
+                  label: '${network.networkBound} reachable',
+                  color: network.networkBound > 0 ? CsColors.amber : CsColors.green,
+                ),
+                Pill(label: '${network.loopbackOnly} loopback', color: CsColors.muted),
+                if (network.riskyCount > 0)
+                  Pill(label: '${network.riskyCount} sensitive', color: CsColors.red),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (services.isEmpty)
+              const Text(
+                'No listener accepted connections from the network.',
+                style: TextStyle(color: CsColors.muted, fontSize: 12.5),
+              )
+            else
+              ...services.map(_networkRow),
+            if (network.notes.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              ...network.notes.map(
+                (note) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    note,
+                    style: const TextStyle(color: CsColors.faint, fontSize: 11.5, height: 1.4),
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 4),
+            const Text(
+              'Reported from the socket table, not scored. No port was contacted or opened.',
+              style: TextStyle(color: CsColors.faint, fontSize: 11.5, height: 1.4),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _networkRow(NetworkService service) {
+    final accent = service.risky ? CsColors.amber : CsColors.muted;
+    final details = [
+      service.process ?? 'unknown process',
+      service.address,
+      if (service.risky && service.riskNote != null) service.riskNote!,
+    ].join(' · ');
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(11),
+      decoration: BoxDecoration(
+        color: CsColors.cardAlt,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: service.risky ? CsColors.amber.withValues(alpha: 0.45) : CsColors.border,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              service.endpoint,
+              style: TextStyle(color: accent, fontSize: 11.5, fontWeight: FontWeight.w700),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  service.service ?? 'Listening service',
+                  style: const TextStyle(fontSize: 12.8, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  details,
+                  style: TextStyle(
+                    color: service.risky ? CsColors.amber : CsColors.muted,
+                    fontSize: 11.8,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -620,7 +794,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
           const SectionTitle(
             title: 'Ask CampusShield',
             caption:
-                'Answers use the same stored results. Ask for a security test and it runs the real checks.',
+                'Answers use the same stored results. Ask for a full scan and it runs the real checks.',
           ),
           const SizedBox(height: 12),
           Wrap(
@@ -629,8 +803,8 @@ class _AssistantScreenState extends State<AssistantScreen> {
             children: [
               ActionChip(
                 avatar: const Icon(Icons.security_rounded, size: 16, color: CsColors.primary),
-                label: const Text('Run a security test'),
-                onPressed: _sending || _testing ? null : _runTest,
+                label: const Text('Run a full scan'),
+                onPressed: _sending || _testing ? null : () => _runTest(),
               ),
               ActionChip(
                 avatar: const Icon(Icons.monitor_heart_outlined, size: 16, color: CsColors.primary),
@@ -731,6 +905,8 @@ class _AssistantScreenState extends State<AssistantScreen> {
         return 'Open settings';
       case 'open-protection':
         return 'Open protection';
+      case 'open-exposure':
+        return 'View ports';
       default:
         return 'Open';
     }

@@ -384,10 +384,11 @@ class AppState extends ChangeNotifier {
         ai: ai.isConfigured ? ai : null,
       );
 
-  // Device check plus quick scan, both real. The scan keeps running; polling
-  // updates the dashboard while the assistant screen watches activeScan.
-  Future<AssistantTestResult> runSecurityTest() async {
-    final result = await api.securityTest();
+  // Device check plus a real file scan of the chosen scope, and a socket-table
+  // read. The scan keeps running; polling updates the dashboard while the
+  // assistant screen watches activeScan.
+  Future<AssistantTestResult> runSecurityTest({String scope = 'full'}) async {
+    final result = await api.securityTest(scope: scope);
     await refresh();
     return result;
   }

@@ -19,8 +19,10 @@ where that information goes, and how to delete it.
 - Accounts are **local to the CampusShield server you or your operator runs**. The developer receives
   no account data. There are **no ads, no analytics, and no developer-operated telemetry**.
 - Device checks are **read-only**. The offline file scanner reads file names, a small file header, and
-  a SHA-256 hash on your own machine; it never uploads file contents. We never read keystrokes,
-  browsing history, screen, camera, microphone, contacts, photos, or location.
+  a SHA-256 hash on your own machine; it never uploads file contents. The security test also reads the
+  local **listening-socket table** (addresses, ports, process names and PIDs) to show which services
+  accept connections; it never contacts a port, captures packets, or resolves anything remotely. We
+  never read keystrokes, browsing history, screen, camera, microphone, contacts, photos, or location.
 - Results are stored **on your device or on the server you choose**. The developer does not receive them.
 - Two features use the network on their own: the optional breached-password check (five characters of a
   SHA-1 hash) and the connection to your own CampusShield server. The link inspector never opens or
@@ -93,14 +95,36 @@ Turning on the real-time folder watch only expands *when* those quick-scan folde
 does not add a new destination for data. Files are **not** transmitted to the developer, and no
 reputation lookup leaves the device.
 
-### 3.4 Linked devices (created when you add a device)
+### 3.4 Network exposure snapshot (created only when you run the security test)
+
+The security test also reads the **local socket table** to show which services on this machine are
+listening and from where they accept connections. Nothing is sent over the network to do this: the
+server runs the operating system's own listing command (`lsof` on macOS, `ss` on Linux, `netstat` on
+Windows) and parses its output. The snapshot stored in the configured data store contains:
+
+| Item | Example | Why |
+| --- | --- | --- |
+| Protocol, address, and port | `tcp 127.0.0.1:4111`, `udp *:59376` | Show where a service is reachable |
+| Reachability label | `loopback` or `network` | Separate services only this machine can reach from those the network can reach |
+| Process name and PID, when the OS exposes it | `node`, `rapportd` | Help you identify the service |
+| Sensitive-service note | "Database port" | Readability hint for well-known ports |
+| Counts, platform, read timestamp, or an error | `11 listeners`, `macOS`, ISO date | Explain what was and was not readable |
+
+This is a **read of the socket table, not a port scan**: CampusShield does not connect to a port, send a
+probe, capture or inspect packets, identify remote hosts, or look anything up online. Exposure is
+reported separately and never added to the safety score. A standard per-user build can only see its own
+sockets and some system daemons; anything it cannot read is left out and the snapshot says the read was
+partial instead of implying the machine has no other listeners. Omit the security test if you do not
+want process names stored; **Clear all data** removes the snapshot with the rest of your records.
+
+### 3.5 Linked devices (created when you add a device)
 
 The name you type, device kind (computer, phone, tablet, browser), platform, source, timestamps, role,
 and — once that device is actually checked — its score and grade. A linked device with no check shows
 "Not checked" and does not affect the average. Linking a device does not transmit anything from that
 device.
 
-### 3.5 Campus threat queue (operator feature)
+### 3.6 Campus threat queue (operator feature)
 
 If an operator ingests events into their own CampusShield server, those events and the analyst's
 actions are stored in that server's data store. An event may contain a group name, event type, source
@@ -108,7 +132,7 @@ label, count, detail text, severity, rule, recommendation, and arbitrary metadat
 ingesting system. **The operator decides what to ingest and must ensure it is authorized and lawful.**
 Do not submit special-category data, and avoid personal data that is not needed for triage.
 
-### 3.6 On-device settings
+### 3.7 On-device settings
 
 The web, desktop, and mobile apps keep a small number of values in browser local storage: the API base
 URL you configure, your session token, auto-refresh preference (on/off and interval), the optional
@@ -121,7 +145,7 @@ self-hosted server share them across restarts. Exclusions are folder paths; excl
 not want its path stored. On the desktop app the server stores its data in the OS application-data
 directory (`~/Library/Application Support/CampusShield/data` on macOS).
 
-### 3.7 Optional AI assistant
+### 3.8 Optional AI assistant
 
 The AI assistant is off until you enter an endpoint, model, and key in Settings. The assistant view and
 the recommendation list work without it: they are built from stored checks and scans on your server.
@@ -144,7 +168,7 @@ File contents, passwords, and session tokens are never sent to the AI endpoint.
 - The assistant is advisory. It cannot create, confirm, or clear a detection, and it is never consulted
   when the scanner decides whether a file is suspicious.
 
-### 3.8 What we never collect
+### 3.9 What we never collect
 
 No file contents, keystrokes, clipboard, browsing history, screen recordings, screenshots, camera or
 microphone input, contacts, calendars, photos, precise location, advertising identifiers, or
@@ -164,7 +188,9 @@ analytics, or device fingerprints are sent to us.
 | The AI endpoint you configure (OpenAI, Azure OpenAI, OpenRouter, Groq, Ollama, etc.) | Only when AI is configured and you use the assistant view, chat, **Explain**, or **Summary** | Stored score and recommendations, chat message and recent turns, or finding name, severity, hash, and reason labels — plus your API key | Off by default; HTTPS required except localhost. Governed by that provider's privacy policy |
 
 The link inspector performs all checks in the browser and never opens, resolves, or fetches the URL you
-paste. Timestamps and device names are not attached to the password request.
+paste. Timestamps and device names are not attached to the password request. The network exposure
+audit adds no destination to this table: it only reads the local socket table and never contacts,
+probes, or resolves a listed port.
 
 ## 5. macOS permissions
 

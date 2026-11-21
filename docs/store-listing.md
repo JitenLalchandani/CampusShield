@@ -71,7 +71,7 @@ PRIVATE BY DEFAULT
 No ads, no analytics, no tracking. Your account and results stay on the server you choose; the developer operates no backend.
 
 WHAT THIS IPHONE APP DOES NOT DO
-iOS does not allow one app to inspect other apps' files, so this build does not scan files or remove malware. The desktop CampusShield app does scan files with a local signature set and heuristics; install it there if you need scanning. A high score reflects the settings checked at that moment, not a guarantee that a device is secure.
+iOS does not allow one app to inspect other apps' files, so this build does not scan files, remove malware, or audit the phone's listening ports. The desktop CampusShield app does all three on the computer that runs it; install it there if you need scanning. A high score reflects the settings checked at that moment, not a guarantee that a device is secure.
 
 Terms and privacy: [https://your-domain.example/terms]
 ```
@@ -133,8 +133,9 @@ CampusShield keeps one shared safety score across the computers, phones, tablets
 Sign in with an account you create on your own CampusShield server. All checks run on your Mac, and no ads, analytics, or tracking are included; results stay on your device or on the server you choose.
 
 This sandboxed App Store build cannot read system security settings or scan files, so device checks
-and malware scans show "Not available in this build". The full read-only device audit and file scanner
-are available in the direct-download version of CampusShield for macOS.
+and malware scans show "Not available in this build". It also cannot read the system-wide socket table,
+so the network exposure card is hidden. The full read-only device audit, file scanner, and socket-table
+read are available in the direct-download version of CampusShield for macOS.
 
 CampusShield is not a full antivirus. It does not filter traffic, scan process memory, or block
 execution with a kernel extension.
@@ -160,7 +161,14 @@ SCHEDULES, EXCLUSIONS, AND CUSTOM SCANS
 Turn on real-time protection, schedule a daily or weekly quick or full scan, exclude folders you never want scanned, or scan one specific folder or file on demand. Desktop notifications and a menu-bar icon keep the app reachable; scheduled scans run only while CampusShield is open.
 
 ASSISTANT AND SECURITY TEST
-The first screen after sign-in shows what the stored checks recommend and one button that runs a read-only device check plus a real quick file scan. Ask the assistant for your status or open detections and it answers from the same stored results.
+The first screen after sign-in shows what the stored checks recommend and one button that runs a full
+security test: a read-only device check, a full file scan of your home folder plus app and launch
+folders, and a read of the local listening-socket table. The result lists the ports and processes that
+accept connections, separates network-reachable services from loopback-only ones, and flags common
+sensitive ports. The socket table is read with lsof; nothing is probed, no packet is captured, and
+exposure is reported separately from the safety score. A quick-scan button is there when you do not
+want to wait for the full walk. Ask the assistant for your status or open detections and it answers
+from the same stored results.
 
 OPTIONAL AI ASSISTANT
 Connect your own OpenAI-compatible endpoint, including a local Ollama model, to have the assistant phrase its suggestions and answers in plain language, explain a finding, or summarize a finished test. Suggestions and scores are always computed locally; the model cannot change a detection. Your key stays in the app's local storage, and remote endpoints must use HTTPS.
@@ -182,7 +190,7 @@ One honest safety score for all your devices.
 CampusShield keeps one shared safety score across the computers, phones, tablets, and browsers you add. Checked devices feed the average; unchecked devices stay marked "Not checked" instead of guessing.
 
 • One score across your linked devices
-• Assistant that recommends next steps and runs a real security test
+• Assistant that recommends next steps and runs a full security test with an open-port report (desktop)
 • Phishing link inspector that never opens the link
 • Breached-password check using k-anonymity — your password never leaves the device
 • Optional campus threat queue with an audit trail, connected to your own server
@@ -195,7 +203,7 @@ BREACHED-PASSWORD CHECK
 See whether a password appears in a public breach corpus. Only the first five characters of a SHA-1 hash are sent, using k-anonymity; the password and full hash stay on your device.
 
 CROSS-DEVICE SCORE
-Run CampusShield's read-only device checks or a file scan on a Mac or Windows computer (desktop app) and link this phone to see one combined score. Android sandboxing prevents this app from scanning the phone's own files in this release, so the Android app links into the score and does not report a phone score of its own.
+Run CampusShield's read-only device checks, a full file scan, or a listening-socket audit on a Mac or Windows computer (desktop app) and link this phone to see one combined score. The desktop test lists the ports and processes that accept connections and separates network-reachable services from loopback-only ones; it reads the socket table and never probes a port. Android sandboxing prevents this app from scanning the phone's own files or ports in this release, so the Android app links into the score and does not report a phone score of its own.
 
 Start the CampusShield server on a computer you control, enter its URL, and create the owner account on first run. Results and account data stay on your device or on the server you choose.
 
@@ -245,7 +253,7 @@ Also included:
 • An optional campus threat queue with an audit trail, connected to your own server
 • Accounts created on the server you run — the first sign-up becomes its owner
 
-The read-only device audit runs in the macOS desktop app, which can check disk encryption, firewall, app verification, system integrity, screen lock, guest account, updates, recent installers, and background login items.
+The read-only device audit runs in the macOS desktop app, which can check disk encryption, firewall, app verification, system integrity, screen lock, guest account, updates, recent installers, and background login items. The security test also reads the local listening-socket table on macOS and Windows, so you can see which ports and processes accept connections, which are network-reachable, and which are loopback-only. It reads the table with lsof, ss, or netstat; it never probes a port, captures packets, or adds exposure to the safety score.
 
 The desktop app also scans files on macOS and Windows: SHA-256 signature matching plus heuristics for disguised file types, hidden executables, content mismatches, and risky script patterns. Findings can be quarantined, restored, or deleted. Real-time protection watches quick-scan folders as new files arrive; scheduled quick/full scans, folder exclusions, and one-off custom folder scans are built in. The Windows build adds desktop notifications and a tray icon.
 

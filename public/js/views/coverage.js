@@ -105,10 +105,10 @@ export async function render(root) {
         <dt>Devices</dt><dd>${esc(devicesLinked)} linked · score ${esc(summary.protection?.average ?? "not checked")}</dd>
       </dl>
       <p class="helper">
-        The file scanner, macOS log scanner, and read-only device posture checks
-        are the only collectors implemented today. The cards below are the
-        integrations a production deployment would need before the coverage
-        numbers are meaningful.
+        The file scanner, macOS log scanner, read-only device posture checks, and
+        read-only listening-socket audit are the only collectors implemented
+        today. The cards below are the integrations a production deployment
+        would need before the coverage numbers are meaningful.
       </p>
     </section>
 
@@ -146,6 +146,7 @@ export async function render(root) {
           <li>${icon("info")}<span>Containment only records a status label; no traffic is blocked and no account is disabled.</span></li>
           <li>${icon("info")}<span>The detector is an illustrative rule set, not a validated detection engine.</span></li>
           <li>${icon("info")}<span>Device checks only run on the macOS server host. iOS, Android, and Windows checks need native plugins before they can score.</span></li>
+          <li>${icon("info")}<span>The socket audit reads the local table with lsof, ss, or netstat. It never probes a port, cannot see sockets owned by other users unless the server runs as root, and reports exposure instead of scoring it.</span></li>
         </ul>
         <p class="warning-note">
           Treat every finding as a lead that needs context from the systems that

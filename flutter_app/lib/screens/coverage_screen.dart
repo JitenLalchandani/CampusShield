@@ -11,6 +11,7 @@ class CoverageScreen extends StatelessWidget {
 
   static const _rows = [
     _CoverageRow('Read-only device audit', true, false, false, true),
+    _CoverageRow('Listening-port audit (socket table)', true, false, false, true),
     _CoverageRow('File scanning (quick / full / custom)', true, false, false, true),
     _CoverageRow('Quarantine and restore', true, false, false, true),
     _CoverageRow('Real-time folder watch (user space)', true, false, false, true),
@@ -115,6 +116,7 @@ class CoverageScreen extends StatelessWidget {
               SizedBox(height: 14),
               _Bullet('File contents are never uploaded. The scanner reads names, a 64 KB header, and a SHA-256 hash locally.'),
               _Bullet('Scans, findings, quarantine records, and settings stay in the local store or your own MongoDB.'),
+              _Bullet('The listening-port audit reads the local socket table only: addresses, ports, and process names. It never contacts, probes, or resolves a port, and exposure is reported separately from the score.'),
               _Bullet('The AI assistant sends data only to the endpoint you configure: stored score/scan facts for suggestions, your chat message, or a finding when you press Explain.'),
               _Bullet('The API key stays in this app’s local storage. Remote AI endpoints must use HTTPS.'),
               _Bullet('Accounts are stored on your own server with scrypt password hashes and hashed session tokens. No ads, analytics, or developer telemetry.'),
@@ -124,7 +126,9 @@ class CoverageScreen extends StatelessWidget {
         const SizedBox(height: 16),
         const InfoNote(
           text: 'Limits: the real-time watch cannot block execution, the signature set is small, and scheduled scans run '
-              'only while the server process is open. A clean scan is not a guarantee that a file is safe.',
+              'only while the server process is open. The listening-port audit is not a port scanner: without root it '
+              'cannot see every other user’s socket, so a short list is not proof that nothing else is exposed. A clean '
+              'scan is not a guarantee that a file is safe.',
           icon: Icons.gpp_maybe_outlined,
           tone: CsColors.amber,
         ),

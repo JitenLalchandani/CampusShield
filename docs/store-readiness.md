@@ -135,7 +135,9 @@ Electron needs `com.apple.security.cs.allow-jit` and
 in-app copy such as "Device checks are available in CampusShield for macOS (direct download)." This
 requires a build flag to disable `/api/protection/scan` and `/api/scans`; it is **not implemented yet**
 and must be done before submitting to the Mac App Store. The sandbox also prevents scanning files
-outside the app container, so the scanner must be disabled in that build, not merely hidden.
+outside the app container, so the scanner must be disabled in that build, not merely hidden. The same
+flag must skip the socket-table read: a sandboxed app cannot run `lsof` against the whole system, so the
+network exposure card is hidden there instead of showing a misleadingly short list.
 
 Do not submit the unsandboxed build and hope for the best; App Review tests sandbox entitlements.
 
@@ -244,6 +246,8 @@ posture coverage in the listing, and keep the "Unverified" wording when a cmdlet
 | Capability | iOS/iPadOS | Android | macOS direct | Mac App Store | Windows Store |
 | --- | --- | --- | --- | --- | --- |
 | Host device check | No | No | Yes | No (sandbox) | Yes (new, not yet run on real Windows hardware) |
+| Full file scan | No | No | Yes | No (sandbox) | Yes |
+| Listening-port audit | No | No | Yes (`lsof`) | No (sandbox) | Yes (`netstat`, not yet run on real hardware) |
 | Cross-device score | Linked only | Linked only | Yes | Linked only | Linked only |
 | Link inspector | Yes | Yes | Yes | Yes | Yes |
 | Breached-password check | Yes | Yes | Yes | Yes | Yes |
@@ -296,6 +300,7 @@ Copy this into the release issue and tick every line.
 
 - [ ] `npm start` serves the app; `/api/health` returns 200.
 - [ ] Device check succeeds on a real Mac; score and findings look sane.
+- [ ] Security test runs a full scan and shows real listeners; a cancelled or truncated scan is labelled as such, and the exposure card never invents a port.
 - [ ] Link inspector and password check work offline.
 - [ ] No console errors on any route at 390 px and 1440 px.
 - [ ] `npm run cap:sync` completed after the last web change.
@@ -367,6 +372,10 @@ Budget several review rounds. First submissions commonly get one metadata or gui
    before a wide release; only English is shipped.
 7. **Detection rules** — the campus queue's rules are illustrative. Validate them against real telemetry
    before calling them a detection engine.
+8. **Socket-table visibility** — the listening-port audit is a read, not a scan. A per-user build cannot
+   see sockets owned by other users or system daemons unless the server runs as root, and the Windows
+   `netstat` path has only been exercised through parser tests. Report the partial read honestly and do
+   not market the audit as a port scanner or as proof that no other service is exposed.
 
 ## 12. References
 

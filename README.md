@@ -38,9 +38,11 @@ each store version can promise.
   session is an HttpOnly `SameSite=Lax` cookie plus a bearer token the web and Flutter clients send.
   The API stays open only until the first account exists (or an API token is configured).
 - **Assistant home** — the first screen after sign-in. It shows the device score, last scan, open
-  detections, and a recommendation list generated from stored checks and scans, with one button that
-  runs a real device check plus a quick file scan. Without an AI endpoint the view asks you to connect
-  one; the recommendations themselves always come from the local checks.
+  detections, network exposure, and a recommendation list generated from stored checks and scans. The
+  primary button runs a real security test: a read-only posture check, a full file scan of the home
+  folder, and a read of every listening socket. A quick-scan button sits next to it. Without an AI
+  endpoint the view asks you to connect one; the recommendations themselves always come from the
+  local checks.
 - **Protection home** — score ring, grade (Protected / Good / Needs attention / At risk), average of
   checked devices, weakest device, and read-only findings with plain-language fixes.
 - **Cross-device registry** — link phones, tablets, computers, and browsers; checked devices feed the
@@ -66,6 +68,11 @@ each store version can promise.
 - **Windows device audit** — BitLocker, firewall profiles, Microsoft Defender real-time state and
   signature age, UAC, machine inactivity lock, Guest account, most recent installed update, startup
   commands, and Downloads installers/scripts. Unreadable values stay "Unverified".
+- **Network exposure audit** — reads the listening socket table (`lsof` on macOS, `ss` on Linux,
+  `netstat` on Windows) and lists each address, port, and owning process. Sockets reachable beyond
+  loopback are separated from loopback-only ones, and sensitive services (SMB, RDP, databases, Redis,
+  Elasticsearch, and similar) are called out with a reason. Nothing is connected to or probed, and
+  exposure is reported, never folded into the score.
 - **API access tokens** — optional shared-secret access for scripts and integrations alongside accounts:
   one full-access token and one read-only token, entered once in Settings.
 - **Signature feeds** — the built-in set plus a local JSON feed and/or an HTTPS feed fetched at startup
@@ -140,6 +147,7 @@ src/
   ai.js                optional OpenAI-compatible assistant proxy (never detects)
   store.js             MongoDB or local JSON persistence (events, actions, audit, devices, scans, quarantine, settings)
   deviceAudit.js       read-only macOS posture checks and scoring
+  networkAudit.js      read-only listening-socket audit (lsof / ss / netstat)
   localScanner.js      macOS Unified Log indicator scanner
   scanner/
     engine.js          directory walk, SHA-256 hashing, scan budgets
@@ -152,7 +160,7 @@ src/
 electron/              Desktop main process (tray, notifications) and preload bridge
 ios/ android/          Capacitor native projects
 build/                 Desktop packaging icons
-tests/                 node:test unit tests for auth, the assistant, scanner, preferences, manager, and AI guard
+tests/                 node:test unit tests for auth, the assistant, scanner, preferences, manager, network audit, and AI guard
 docs/                  Store submission assets
 ```
 
@@ -302,7 +310,7 @@ is configured. For LAN development over plain HTTP:
 | `GET` | `/api/auth/me` | The signed-in user for the current session |
 | `POST` | `/api/assistant/suggest` | Stored facts plus recommended next steps; optional `{"ai":{…}}` adds AI explanations |
 | `POST` | `/api/assistant/chat` | `{"message":"…","history":[…]}` — answers from stored facts, optionally phrased by AI |
-| `POST` | `/api/assistant/security-test` | Runs a real device check plus a quick file scan and records both |
+| `POST` | `/api/assistant/security-test` | `{"scope":"full"\|"quick"}` (default `full`) — real device check, file scan, and socket-table read |
 | `POST` | `/api/assistant/run-summary` | Plain-language summary of the latest recorded scan |
 | `GET` | `/api/summary` | Counts, severity mix, 7-day volume, device total, rules version |
 | `GET` | `/api/protection` | Devices, cross-device summary, scanner status, recent scans, quarantine |
@@ -362,6 +370,10 @@ treat any event source as trusted input. Serve a deployment beyond localhost ove
 - Scans, findings (path, hash, severity, reasons), and quarantine records stay in the configured local
   store. On desktop that is the app-data folder, and quarantined files sit in
   `<dataDir>/quarantine` with mode 0600.
+- The socket audit reads only the local socket table and the owning process names and PIDs. It does
+  not capture packets, resolve remote hosts, or connect to any port. The snapshot (counts, addresses,
+  ports, process names, read time) is stored with the other scan results and is never sent off the
+  server.
 - The link inspector runs entirely in the browser and never fetches the inspected URL.
 - The password check sends only a five-character SHA-1 prefix to
   `api.pwnedpasswords.com`; see [docs/privacy-policy.md](docs/privacy-policy.md).
@@ -391,6 +403,11 @@ treat any event source as trusted input. Serve a deployment beyond localhost ove
   Access** (System Settings → Privacy & Security). Without it a scan completes over only the files it
   can read and the Protection view says so instead of reporting a clean result.
 - Detection is a small, illustrative rule set — not a validated detection engine.
+- The socket audit is not a port scanner. It lists what the OS already has open, cannot see sockets
+  owned by other users (or, on macOS, by system daemons) unless the server runs as root, and the
+  sensitive-port list is a readability hint, not a verified vulnerability. On a sandboxed Mac App
+  Store build the socket table may be limited to the app's own process, so that build does not
+  advertise the audit.
 - The AI assistant is advisory. It explains or summarizes what the scanner already found, can be wrong,
   and never influences detection, scoring, or quarantine. Its absence changes only wording, never the
   recommendations.

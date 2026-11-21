@@ -72,10 +72,17 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Ask, then verify'), findsOneWidget);
-    expect(find.text('Security test'), findsOneWidget);
-    expect(find.text('Quarantine invoice.scr'), findsOneWidget);
+    expect(find.text('How to stay protected'), findsOneWidget);
+    expect(find.text('Security scan'), findsOneWidget);
+    expect(find.text('Network exposure'), findsOneWidget);
+    expect(find.text('2 reachable'), findsOneWidget);
     expect(find.text('AI suggestions need an endpoint'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Quarantine invoice.scr'),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Quarantine invoice.scr'), findsOneWidget);
     expect(find.text('MP'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -124,7 +131,7 @@ void main() {
 
     expect(find.byType(NavigationBar), findsOneWidget);
     expect(find.text('CampusShield'), findsOneWidget);
-    expect(find.text('Ask, then verify'), findsOneWidget);
+    expect(find.text('How to stay protected'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

@@ -2,9 +2,9 @@ import { api, getAiConfig, isAiConfigured } from "../api.js";
 import { esc, icon, num, relativeTime, sevClass, toast } from "../ui.js";
 
 export const meta = {
-  eyebrow: "Assistant",
-  title: "Ask, then verify",
-  subtitle: "Recommendations and answers come from stored checks and scans. The AI explains them; it never decides detections."
+  eyebrow: "Protection assistant",
+  title: "How to stay protected",
+  subtitle: "Guidance from real checks, scans, and listening ports. The AI explains the facts; it never decides detections."
 };
 
 const chatHistory = [];
@@ -22,8 +22,8 @@ export async function render(root) {
     <section class="card">
       <div class="card-head">
         <div>
-          <h2>Security test</h2>
-          <p>One run: a read-only device check plus a real quick file scan on the server host.</p>
+          <h2>How to stay protected</h2>
+          <p>One test runs a read-only device check, a full file scan of this computer, and a read of every listening port. Nothing is estimated.</p>
         </div>
         <span class="chip" id="testChip">${loadedOnce ? "Ready" : "Loading"}</span>
       </div>
@@ -34,10 +34,15 @@ export async function render(root) {
 
       <div class="form-row" style="margin-top:14px">
         <button class="btn primary" id="runTestBtn" type="button">
-          ${icon("scan")}<span>Run security test</span>
+          ${icon("scan")}<span>Run full scan</span>
         </button>
+        <button class="btn subtle" id="quickScanBtn" type="button">Quick scan</button>
         <button class="btn subtle" id="refreshSuggestionsBtn" type="button">Refresh suggestions</button>
       </div>
+      <p class="tiny" style="margin-top:8px">
+        A full scan reads files under your home folder plus the app folders, then reads the socket table.
+        It can take several minutes; the file count updates live. Ports are reported, never probed or scored.
+      </p>
 
       <div class="test-run" id="testRun" hidden></div>
     </section>
@@ -52,6 +57,19 @@ export async function render(root) {
             </div>
           </div>
           <p class="helper">Checking whether an AI endpoint is configured…</p>
+        </section>
+
+        <section class="card" id="networkCard">
+          <div class="card-head">
+            <div>
+              <h2>Network exposure</h2>
+              <p>Listening sockets read from this computer</p>
+            </div>
+            <span class="chip" id="networkChip">—</span>
+          </div>
+          <div id="networkBody">
+            <p class="helper">No port audit has run yet. Run a full scan to read the socket table.</p>
+          </div>
         </section>
 
         <section class="card">
@@ -80,7 +98,7 @@ export async function render(root) {
         <div class="chat-log" id="chatLog"></div>
 
         <div class="chat-chips">
-          <button class="filter-chip" type="button" data-chat-prompt="Run a security test">Run a security test</button>
+          <button class="filter-chip" type="button" data-chat-prompt="Run a full scan">Run a full scan</button>
           <button class="filter-chip" type="button" data-chat-prompt="What is my status?">What is my status?</button>
           <button class="filter-chip" type="button" data-chat-prompt="Any threats?">Any threats?</button>
         </div>
@@ -102,7 +120,8 @@ export async function render(root) {
   paintChat(root);
   wire(root);
 
-  root.querySelector("#runTestBtn")?.addEventListener("click", () => runSecurityTest(root));
+  root.querySelector("#runTestBtn")?.addEventListener("click", () => runSecurityTest(root, "full"));
+  root.querySelector("#quickScanBtn")?.addEventListener("click", () => runSecurityTest(root, "quick"));
   root.querySelector("#refreshSuggestionsBtn")?.addEventListener("click", async event => {
     const button = event.currentTarget;
     button.disabled = true;
@@ -138,6 +157,7 @@ async function load(root, { quiet }) {
 
     loadedOnce = true;
     paintFacts(root, data.snapshot);
+    paintNetwork(root, data.snapshot.network);
     paintAi(root, data);
     paintRecs(root, data);
 
@@ -188,6 +208,17 @@ function paintFacts(root, snapshot) {
     : "No file scan is recorded yet.";
   const openThreats = snapshot.openThreats.length;
   const quarantine = snapshot.quarantine.count;
+  const network = snapshot.network;
+  const networkValue = network
+    ? network.supported
+      ? `${num(network.networkBound)}`
+      : "Unread"
+    : "Not read";
+  const networkNote = network
+    ? network.supported
+      ? `${num(network.total)} listeners · ${num(network.loopbackOnly)} loopback-only · ${relativeTime(network.readAt)}`
+      : network.error || "The socket table could not be read."
+    : "Run a full scan to read the socket table.";
 
   facts.innerHTML = `
     <div class="fact-tile">
@@ -200,6 +231,11 @@ function paintFacts(root, snapshot) {
       <strong>${esc(scanValue)}</strong>
       <small>${scanNote}</small>
     </div>
+    <div class="fact-tile" data-tone="${network?.riskyCount ? "risk" : ""}">
+      <span class="fact-label">Network reachable</span>
+      <strong>${esc(networkValue)}</strong>
+      <small>${esc(networkNote)}</small>
+    </div>
     <div class="fact-tile" data-tone="${openThreats ? "risk" : "ok"}">
       <span class="fact-label">Open detections</span>
       <strong>${num(openThreats)}</strong>
@@ -210,6 +246,92 @@ function paintFacts(root, snapshot) {
       <strong>${num(quarantine)}</strong>
       <small>${quarantine ? "Contained files remain recoverable" : "Nothing is contained"}</small>
     </div>
+  `;
+}
+
+function paintNetwork(root, network) {
+  const body = root.querySelector("#networkBody");
+  const chip = root.querySelector("#networkChip");
+
+  if (!body) return;
+
+  if (!network) {
+    if (chip) chip.textContent = "Not read";
+    body.innerHTML = `<p class="helper">No port audit has run yet. Run a full scan to read the socket table.</p>`;
+    return;
+  }
+
+  if (chip) {
+    chip.textContent = network.supported
+      ? `${num(network.networkBound)} reachable`
+      : "Unavailable";
+  }
+
+  body.innerHTML = networkBody(network);
+}
+
+function networkBody(network) {
+  if (!network.supported) {
+    return `
+      <div class="empty compact">
+        ${icon("alert")}
+        <strong>Could not read the socket table</strong>
+        <p>${esc(network.error || "The listening sockets could not be read on this host.")}</p>
+      </div>
+      <p class="tiny">Nothing was guessed to fill the gap.</p>`;
+  }
+
+  const services = (network.services || []).filter(service => service.scope === "network");
+  const rows = services.length
+    ? services
+        .map(
+          service => `
+        <tr${service.risky ? ' class="exposure-risky"' : ""}>
+          <td class="exposure-port">${esc(service.protocol)} ${esc(String(service.port))}</td>
+          <td>${esc(service.service || "—")}</td>
+          <td>${esc(service.process || "unknown")}</td>
+          <td>${service.risky ? esc(service.riskNote || "Sensitive port") : "Reported, not flagged"}</td>
+        </tr>`
+        )
+        .join("")
+    : `<tr><td colspan="4" class="exposure-none">No listener accepted connections from the network.</td></tr>`;
+
+  const notes = (network.notes || []).map(note => `<li>${esc(note)}</li>`).join("");
+  const findings = (network.findings || []).length
+    ? `<div class="exposure-findings">
+        ${network.findings
+          .map(
+            finding => `
+          <div class="tool-finding" data-tone="warn">
+            <strong>${esc(finding.title)} · ${esc(finding.severity)}</strong>
+            <p>${esc(finding.why || finding.detail)}</p>
+          </div>`
+          )
+          .join("")}
+      </div>`
+    : "";
+
+  return `
+    <div class="exposure-counts">
+      <span><strong>${num(network.total)}</strong> listeners</span>
+      <span><strong>${num(network.networkBound)}</strong> reachable from the network</span>
+      <span><strong>${num(network.loopbackOnly)}</strong> loopback only</span>
+      <span><strong>${num(network.riskyCount)}</strong> sensitive</span>
+    </div>
+    ${findings}
+    <div class="exposure-table-wrap">
+      <table class="exposure-table">
+        <thead>
+          <tr><th>Port</th><th>Service</th><th>Process</th><th>Exposure</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    ${notes ? `<ul class="exposure-notes">${notes}</ul>` : ""}
+    <p class="tiny">
+      Read at ${esc(relativeTime(network.readAt))} from the socket table${network.elevated ? " as root" : ""}.
+      No port was contacted, opened, or scored — a reachable listener is a fact, not a detection.
+    </p>
   `;
 }
 
@@ -308,6 +430,7 @@ function actionLabel(kind) {
   if (kind === "enable-watch") return "Turn on";
   if (kind === "schedule-scan" || kind === "open-settings") return "Open settings";
   if (kind === "open-protection") return "Review";
+  if (kind === "open-exposure") return "View ports";
   return "Open";
 }
 
@@ -407,6 +530,14 @@ async function handleAction(root, dataset) {
     return;
   }
 
+  if (kind === "open-exposure") {
+    const card = root.querySelector("#networkCard");
+    card?.scrollIntoView({ behavior: "smooth", block: "center" });
+    card?.classList.add("flash");
+    setTimeout(() => card?.classList.remove("flash"), 1400);
+    return;
+  }
+
   location.hash = "#/settings";
 }
 
@@ -415,32 +546,36 @@ async function refreshAfterChange(root) {
   await load(root, { quiet: true });
 }
 
-async function runSecurityTest(root) {
+async function runSecurityTest(root, scope = "full") {
   if (running) return;
 
   running = true;
 
   const button = root.querySelector("#runTestBtn");
+  const quickButton = root.querySelector("#quickScanBtn");
   const chip = root.querySelector("#testChip");
+  const label = scope === "quick" ? "quick" : "full";
 
   if (button) button.disabled = true;
+  if (quickButton) quickButton.disabled = true;
   if (chip) chip.textContent = "Checking…";
 
   showRunPanel(root);
   root.querySelector("#testRun").innerHTML = `
     <div class="run-head">
-      <h3>Test results</h3>
+      <h3>Scan results</h3>
       <span class="chip">Checking</span>
     </div>
     <div class="loading-state" style="padding:14px 0">
       <span class="spinner" aria-hidden="true"></span>
-      <p>Running the device check and starting the quick scan…</p>
+      <p>Running the device check, starting the ${label} file scan, and reading the socket table…</p>
     </div>`;
 
   try {
-    const result = await api("/api/assistant/security-test", { method: "POST" });
+    const result = await api("/api/assistant/security-test", { method: "POST", body: { scope } });
 
     renderRun(root, result);
+    paintNetwork(root, result.network);
 
     if (result.scan?.id) {
       pollScan(root, result.scan.id);
@@ -453,12 +588,13 @@ async function runSecurityTest(root) {
   } catch (error) {
     root.querySelector("#testRun").innerHTML = `
       <div class="run-head">
-        <h3>Test results</h3>
+        <h3>Scan results</h3>
         <span class="chip">Failed</span>
       </div>
       <p class="warning-note">The security test could not start: ${esc(error.message)}</p>`;
     running = false;
     if (button) button.disabled = false;
+    if (quickButton) quickButton.disabled = false;
     if (chip) chip.textContent = "Failed";
     toast(error.message, { type: "error", timeout: 6000 });
   }
@@ -475,6 +611,7 @@ function renderRun(root, result) {
   const check = result.check || {};
   const device = result.device || null;
   const scan = result.scan;
+  const network = result.network;
 
   const checkBlock = check.supported && device
     ? `<div class="run-check">
@@ -488,13 +625,14 @@ function renderRun(root, result) {
 
   panel.innerHTML = `
     <div class="run-head">
-      <h3>Test results</h3>
+      <h3>Scan results</h3>
       <span class="chip" id="runStatus">${scan ? "Scanning" : "Scan unavailable"}</span>
     </div>
     ${checkBlock}
     <div id="scanBlock">
       ${scan ? scanBlock(scan) : ""}
     </div>
+    ${network ? `<div class="run-network" id="runNetwork">${networkBody(network)}</div>` : ""}
     <div id="runSummary"></div>
   `;
 }
@@ -573,6 +711,8 @@ async function finishRun(root, scan, scanError = "") {
   const button = root.querySelector("#runTestBtn");
 
   if (button) button.disabled = false;
+  const quickButton = root.querySelector("#quickScanBtn");
+  if (quickButton) quickButton.disabled = false;
 
   const failed = scan?.status === "failed" || scan?.status === "cancelled";
   const detections = Number(scan?.threatCount) || 0;
@@ -628,7 +768,7 @@ function paintChat(root) {
   if (!chatHistory.length) {
     log.innerHTML = `
       <div class="chat-empty">
-        <p>Ask for a security test, the current status, or open detections. Without an AI endpoint,
+        <p>Ask for a full scan, the current status, or open detections. Without an AI endpoint,
            CampusShield answers these three from stored facts.</p>
       </div>`;
     return;
