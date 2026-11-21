@@ -141,20 +141,22 @@ class ApiClient {
 
   Future<AuthSession> signup({
     required String name,
+    required String username,
     required String email,
     required String password,
   }) async {
     final payload = mapFrom(await _send('POST', '/api/auth/signup', body: {
       'name': name,
+      'username': username,
       'email': email,
       'password': password,
     }));
     return AuthSession.fromJson(payload);
   }
 
-  Future<AuthSession> login({required String email, required String password}) async {
+  Future<AuthSession> login({required String identifier, required String password}) async {
     final payload = mapFrom(await _send('POST', '/api/auth/login', body: {
-      'email': email,
+      'identifier': identifier,
       'password': password,
     }));
     return AuthSession.fromJson(payload);

@@ -49,7 +49,7 @@ const _noAccount = '{"hasAccount":false,"signupOpen":true,"user":null}';
 const _hasAccount = '{"hasAccount":true,"signupOpen":false,"user":null}';
 
 const _sessionBody = '{"user":{"id":"user-1","email":"owner@example.com",'
-    '"name":"Meera Patel","role":"owner"},"token":"tok-123",'
+    '"name":"Meera Patel","username":"meera.patel","role":"owner"},"token":"tok-123",'
     '"expiresAt":"2026-12-18T00:00:00.000Z"}';
 
 Future<void> _pumpAuth(WidgetTester tester, AppState state) async {
@@ -123,14 +123,16 @@ void main() {
 
     final fields = find.byType(TextField);
     await tester.enterText(fields.at(0), 'Meera Patel');
-    await tester.enterText(fields.at(1), 'owner@example.com');
-    await tester.enterText(fields.at(2), 'correct horse battery');
+    await tester.enterText(fields.at(1), 'meera.patel');
+    await tester.enterText(fields.at(2), 'owner@example.com');
+    await tester.enterText(fields.at(3), 'correct horse battery');
     await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
     await tester.pumpAndSettle();
 
     expect(signup, isNotNull);
     final body = jsonDecode(signup!.body) as Map<String, dynamic>;
     expect(body['name'], 'Meera Patel');
+    expect(body['username'], 'meera.patel');
     expect(body['email'], 'owner@example.com');
     expect(body['password'], 'correct horse battery');
 
@@ -167,8 +169,9 @@ void main() {
 
     final fields = find.byType(TextField);
     await tester.enterText(fields.at(0), 'Meera Patel');
-    await tester.enterText(fields.at(1), 'owner@example.com');
-    await tester.enterText(fields.at(2), 'short');
+    await tester.enterText(fields.at(1), 'meera.patel');
+    await tester.enterText(fields.at(2), 'owner@example.com');
+    await tester.enterText(fields.at(3), 'short');
     await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
     await tester.pump();
 
@@ -207,6 +210,7 @@ void main() {
 
     await state.createAccount(
       name: 'Meera Patel',
+      username: 'meera.patel',
       email: 'owner@example.com',
       password: 'correct horse battery',
       baseUrl: 'http://127.0.0.1:3999',

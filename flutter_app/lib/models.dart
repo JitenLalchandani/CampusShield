@@ -727,6 +727,7 @@ class AuthUser {
     required this.id,
     required this.email,
     required this.name,
+    required this.username,
     required this.role,
     required this.lastLoginAt,
   });
@@ -734,6 +735,7 @@ class AuthUser {
   final String id;
   final String email;
   final String name;
+  final String? username;
   final String role;
   final DateTime? lastLoginAt;
 
@@ -744,6 +746,7 @@ class AuthUser {
         id: _text(json['id']),
         email: _text(json['email']),
         name: _text(json['name'], 'Account'),
+        username: json['username'] == null ? null : _text(json['username']),
         role: _text(json['role'], 'member'),
         lastLoginAt: _date(json['lastLoginAt']),
       );

@@ -11,20 +11,20 @@ export async function fetchAuthStatus() {
   return api("/api/auth/status");
 }
 
-export async function createAccount({ name, email, password }) {
+export async function createAccount({ name, username, email, password }) {
   const result = await api("/api/auth/signup", {
     method: "POST",
-    body: { name, email, password }
+    body: { name, username, email, password }
   });
 
   setSessionToken(result.token);
   return result;
 }
 
-export async function signIn({ email, password }) {
+export async function signIn({ identifier, password }) {
   const result = await api("/api/auth/login", {
     method: "POST",
-    body: { email, password }
+    body: { identifier, password }
   });
 
   setSessionToken(result.token);
@@ -91,13 +91,21 @@ export function renderAuthGate(root, { status = null, error = "", onSignedIn }) 
             <label class="field">
               <span>Your name</span>
               <input class="input" id="authName" name="name" type="text" autocomplete="name"
-                maxlength="80" placeholder="Meera Patel" required>
+                maxlength="60" placeholder="Meera Patel" required>
+            </label>
+
+            <label class="field" style="margin-top:12px">
+              <span>Username</span>
+              <input class="input" id="authUsername" name="username" type="text" autocomplete="username"
+                maxlength="32" pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,31}"
+                placeholder="meera.patel" required>
+              <span class="helper">3–32 letters, numbers, dots, dashes, or underscores. You can sign in with this too.</span>
             </label>` : ""}
 
           <label class="field" style="margin-top:12px">
-            <span>Email</span>
-            <input class="input" id="authEmail" name="email" type="email" autocomplete="username"
-              placeholder="you@campus.edu" required>
+            <span>${signup ? "Email" : "Email or username"}</span>
+            <input class="input" id="authEmail" name="email" type="${signup ? "email" : "text"}"
+              autocomplete="username" placeholder="${signup ? "you@campus.edu" : "you@campus.edu or meera.patel"}" required>
           </label>
 
           <label class="field" style="margin-top:12px">
@@ -159,9 +167,10 @@ export function renderAuthGate(root, { status = null, error = "", onSignedIn }) 
   form.addEventListener("submit", async event => {
     event.preventDefault();
 
-    const email = form.querySelector("#authEmail").value.trim();
+    const identifier = form.querySelector("#authEmail").value.trim();
     const password = form.querySelector("#authPassword").value;
     const name = form.querySelector("#authName")?.value.trim() || "";
+    const username = form.querySelector("#authUsername")?.value.trim() || "";
     const baseValue = form.querySelector("#authBase")?.value ?? "";
     const passwordField = form.querySelector("#authPassword");
 
@@ -170,8 +179,14 @@ export function renderAuthGate(root, { status = null, error = "", onSignedIn }) 
       return;
     }
 
-    if (!email) {
-      showError("Enter the email for this account.");
+    if (signup && !/^[A-Za-z0-9][A-Za-z0-9._-]{2,31}$/.test(username)) {
+      showError("Choose a username of 3–32 letters, numbers, dots, dashes, or underscores.");
+      form.querySelector("#authUsername")?.focus();
+      return;
+    }
+
+    if (!identifier) {
+      showError(signup ? "Enter the email for this account." : "Enter your email or username.");
       return;
     }
 
@@ -190,8 +205,8 @@ export function renderAuthGate(root, { status = null, error = "", onSignedIn }) 
 
     try {
       const result = signup
-        ? await createAccount({ name, email, password })
-        : await signIn({ email, password });
+        ? await createAccount({ name, username, email: identifier, password })
+        : await signIn({ identifier, password });
       onSignedIn(result);
     } catch (failure) {
       submit.disabled = false;

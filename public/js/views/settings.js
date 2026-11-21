@@ -62,6 +62,7 @@ export async function render(root) {
           </div>
           <dl class="kv">
             <dt>Name</dt><dd>${me ? esc(me.user.name) : "Not reported"}</dd>
+            <dt>Username</dt><dd>${me?.user?.username ? `@${esc(me.user.username)}` : "Not set"}</dd>
             <dt>Email</dt><dd>${me ? esc(me.user.email) : "Not reported"}</dd>
             <dt>Last sign-in</dt><dd>${me?.user?.lastLoginAt ? dateTime(me.user.lastLoginAt) : "This session"}</dd>
             <dt>Session</dt><dd>30-day token stored in this browser</dd>

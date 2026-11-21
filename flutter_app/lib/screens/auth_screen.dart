@@ -17,6 +17,7 @@ class AuthScreen extends StatefulWidget {
 class _AuthScreenState extends State<AuthScreen> {
   late final TextEditingController _server;
   final _name = TextEditingController();
+  final _username = TextEditingController();
   final _email = TextEditingController();
   final _password = TextEditingController();
 
@@ -39,6 +40,7 @@ class _AuthScreenState extends State<AuthScreen> {
   void dispose() {
     _server.dispose();
     _name.dispose();
+    _username.dispose();
     _email.dispose();
     _password.dispose();
     super.dispose();
@@ -50,16 +52,19 @@ class _AuthScreenState extends State<AuthScreen> {
     final email = _email.text.trim();
     final password = _password.text;
     final name = _name.text.trim();
+    final username = _username.text.trim();
 
     final problem = _creating
         ? (name.length < 2
             ? 'Enter your name.'
-            : !email.contains('@')
-                ? 'Enter your email address.'
-                : password.length < 10
-                    ? 'Use at least 10 characters for the password.'
-                    : null)
-        : (email.isEmpty || password.isEmpty ? 'Enter your email and password.' : null);
+            : !RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]{2,31}$').hasMatch(username)
+                ? 'Choose a username of 3-32 letters, numbers, dots, dashes, or underscores.'
+                : !email.contains('@')
+                    ? 'Enter your email address.'
+                    : password.length < 10
+                        ? 'Use at least 10 characters for the password.'
+                        : null)
+        : (email.isEmpty || password.isEmpty ? 'Enter your email or username and password.' : null);
 
     if (problem != null) {
       setState(() => _error = problem);
@@ -75,13 +80,14 @@ class _AuthScreenState extends State<AuthScreen> {
       if (_creating) {
         await widget.state.createAccount(
           name: name,
+          username: username,
           email: email,
           password: password,
           baseUrl: _server.text,
         );
       } else {
         await widget.state.signIn(
-          email: email,
+          identifier: email,
           password: password,
           baseUrl: _server.text,
         );
@@ -179,13 +185,27 @@ class _AuthScreenState extends State<AuthScreen> {
               decoration: const InputDecoration(labelText: 'Name', hintText: 'Meera Patel'),
             ),
             const SizedBox(height: 12),
+            TextField(
+              controller: _username,
+              autocorrect: false,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'Username',
+                hintText: 'meera.patel',
+                helperText: '3-32 letters, numbers, dots, dashes, or underscores. You can sign in with this too.',
+              ),
+            ),
+            const SizedBox(height: 12),
           ],
           TextField(
             controller: _email,
-            keyboardType: TextInputType.emailAddress,
+            keyboardType: _creating ? TextInputType.emailAddress : TextInputType.text,
             autocorrect: false,
             textInputAction: TextInputAction.next,
-            decoration: const InputDecoration(labelText: 'Email', hintText: 'you@campus.edu'),
+            decoration: InputDecoration(
+              labelText: _creating ? 'Email' : 'Email or username',
+              hintText: _creating ? 'you@campus.edu' : 'you@campus.edu or meera.patel',
+            ),
           ),
           const SizedBox(height: 12),
           TextField(

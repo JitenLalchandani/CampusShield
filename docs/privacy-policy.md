@@ -47,6 +47,7 @@ the configured data store:
 | Item | Example | Why |
 | --- | --- | --- |
 | Name you type | `Meera Patel` | Label the account |
+| Username you type | `meera.patel` | Sign-in identifier; stored with a lowercase copy for lookup |
 | E-mail you type | `meera@campus.edu` | Sign-in identifier; it is not verified by e-mail |
 | Password hash | scrypt hash with a random salt | Verify sign-in; the password itself is never stored |
 | Role and timestamps | `owner`, created and last-signed-in ISO dates | Show who owns the server |

@@ -33,10 +33,11 @@ each store version can promise.
 
 ## Features
 
-- **Accounts and sessions** — the first sign-up creates the owner account; every later visit asks for
-  the e-mail and password. Passwords are scrypt-hashed, session tokens are stored hashed, and the
-  session is an HttpOnly `SameSite=Lax` cookie plus a bearer token the web and Flutter clients send.
-  The API stays open only until the first account exists (or an API token is configured).
+- **Accounts and sessions** — the first sign-up creates the owner account with a name, username,
+  e-mail, and password; every later visit asks for the e-mail or username and password. Passwords are
+  scrypt-hashed, session tokens are stored hashed, and the session is an HttpOnly `SameSite=Lax` cookie
+  plus a bearer token the web and Flutter clients send. The API stays open only until the first account
+  exists (or an API token is configured).
 - **Assistant home** — the first screen after sign-in. It shows the device score, last scan, open
   detections, network exposure, and a recommendation list generated from stored checks and scans. The
   primary button runs a real security test: a read-only posture check, a full file scan of the home
@@ -304,8 +305,8 @@ is configured. For LAN development over plain HTTP:
 | --- | --- | --- |
 | `GET` | `/api/health` | Status, storage, platform, scanner and device-audit availability (open) |
 | `GET` | `/api/auth/status` | Whether sign-up is open, whether an account exists, and the current user (open) |
-| `POST` | `/api/auth/signup` | `{"name":"…","email":"…","password":"…"}` — first account becomes owner; returns a session |
-| `POST` | `/api/auth/login` | `{"email":"…","password":"…"}` — returns a session and sets the session cookie |
+| `POST` | `/api/auth/signup` | `{"name":"…","username":"…","email":"…","password":"…"}` — first account becomes owner; returns a session |
+| `POST` | `/api/auth/login` | `{"identifier":"…","password":"…"}` — username or e-mail; returns a session and sets the session cookie |
 | `POST` | `/api/auth/logout` | Ends the current session |
 | `GET` | `/api/auth/me` | The signed-in user for the current session |
 | `POST` | `/api/assistant/suggest` | Stored facts plus recommended next steps; optional `{"ai":{…}}` adds AI explanations |
@@ -377,9 +378,9 @@ treat any event source as trusted input. Serve a deployment beyond localhost ove
 - The link inspector runs entirely in the browser and never fetches the inspected URL.
 - The password check sends only a five-character SHA-1 prefix to
   `api.pwnedpasswords.com`; see [docs/privacy-policy.md](docs/privacy-policy.md).
-- Accounts store a name, e-mail, scrypt password hash, role, creation and last sign-in times. Sessions
-  store only a SHA-256 hash of the token; raw passwords and session tokens are never written to the
-  store. Signing out deletes the session.
+- Accounts store a name, username (with a lowercase lookup copy), e-mail, scrypt password hash, role,
+  creation and last sign-in times. Sessions store only a SHA-256 hash of the token; raw passwords and
+  session tokens are never written to the store. Signing out deletes the session.
 - The optional AI assistant sends data only when an endpoint is configured and you use the assistant
   view, chat, **Explain**, or **Summary**: the finding's name, severity, and matched reasons, the
   stored scan counts, or your chat message and the last few replies. File contents are never sent, full

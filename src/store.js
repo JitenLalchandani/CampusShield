@@ -19,6 +19,14 @@ class DuplicateEmailError extends Error {
   }
 }
 
+class DuplicateUsernameError extends Error {
+  constructor(username) {
+    super(`An account already uses the username ${username}`);
+    this.name = "DuplicateUsernameError";
+    this.code = "DUPLICATE_USERNAME";
+  }
+}
+
 function copy(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
 }
@@ -338,6 +346,16 @@ function createJsonStore(dir) {
         await load();
         return copy(state.users.find(user => user.email === email) || null);
       },
+      async findByLogin(identifier) {
+        await load();
+        const needle = String(identifier || "").trim().toLowerCase();
+        if (!needle) return null;
+        return copy(
+          state.users.find(
+            user => user.email === needle || (user.usernameLower || "").toLowerCase() === needle
+          ) || null
+        );
+      },
       async count() {
         await load();
         return state.users.length;
@@ -349,6 +367,9 @@ function createJsonStore(dir) {
         }
         if (state.users.some(existing => existing.email === user.email)) {
           throw new DuplicateEmailError(user.email);
+        }
+        if (user.usernameLower && state.users.some(existing => existing.usernameLower === user.usernameLower)) {
+          throw new DuplicateUsernameError(user.username);
         }
         state.users.push(copy(user));
         await persist();
@@ -495,6 +516,7 @@ function createMongoStore(uri) {
         quarantine.createIndex({ quarantinedAt: -1 }),
         users.createIndex({ id: 1 }, { unique: true }),
         users.createIndex({ email: 1 }, { unique: true }),
+        users.createIndex({ usernameLower: 1 }, { unique: true, sparse: true }),
         sessions.createIndex({ id: 1 }, { unique: true }),
         sessions.createIndex({ tokenHash: 1 }, { unique: true }),
         sessions.createIndex({ userId: 1 }),
@@ -669,6 +691,11 @@ function createMongoStore(uri) {
       async find(email) {
         return users.findOne({ email });
       },
+      async findByLogin(identifier) {
+        const needle = String(identifier || "").trim().toLowerCase();
+        if (!needle) return null;
+        return users.findOne({ $or: [{ email: needle }, { usernameLower: needle }] });
+      },
       async count() {
         return users.countDocuments({});
       },
@@ -676,6 +703,9 @@ function createMongoStore(uri) {
         try {
           await users.insertOne(user);
         } catch (error) {
+          if (error.code === 11000 && /username/i.test(String(error.message))) {
+            throw new DuplicateUsernameError(user.username);
+          }
           if (error.code === 11000 && /email/.test(String(error.message))) {
             throw new DuplicateEmailError(user.email);
           }
@@ -748,4 +778,4 @@ function createMongoStore(uri) {
   };
 }
 
-module.exports = { createStore, DuplicateIdError, DuplicateEmailError };
+module.exports = { createStore, DuplicateIdError, DuplicateEmailError, DuplicateUsernameError };

@@ -1,4 +1,4 @@
-const VERSION = "campusshield-v9";
+const VERSION = "campusshield-v10";
 
 const SHELL = [
   "/",

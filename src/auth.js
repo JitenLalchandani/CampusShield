@@ -10,6 +10,7 @@ const PASSWORD_MAX = 200;
 const KEY_LENGTH = 64;
 const SCRYPT_OPTIONS = { N: 16384, r: 8, p: 1, maxmem: 96 * 1024 * 1024 };
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const USERNAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{2,31}$/;
 
 function authError(message, statusCode = 400) {
   return Object.assign(new Error(message), { statusCode });
@@ -29,6 +30,20 @@ function normalizeName(raw) {
   const name = String(raw || "").trim().replace(/\s+/g, " ").slice(0, 60);
   if (name.length < 2) throw authError("Enter a name of at least 2 characters.");
   return name;
+}
+
+function normalizeUsername(raw) {
+  return String(raw || "").trim().slice(0, 32);
+}
+
+function validateUsername(raw) {
+  const username = normalizeUsername(raw);
+  if (!USERNAME_PATTERN.test(username)) {
+    throw authError(
+      "Choose a username of 3-32 characters: letters, numbers, dots, dashes, or underscores."
+    );
+  }
+  return username;
 }
 
 function validatePassword(raw) {
@@ -135,6 +150,7 @@ function publicUser(user) {
   return {
     id: user.id,
     email: user.email,
+    username: user.username || null,
     name: user.name,
     role: user.role,
     createdAt: user.createdAt || null,
@@ -273,6 +289,7 @@ function registerAuthRoutes(app, { store, audit, limiter = createLoginLimiter() 
 
       const email = validateEmail(req.body?.email);
       const name = normalizeName(req.body?.name);
+      const username = validateUsername(req.body?.username);
       const password = validatePassword(req.body?.password);
       const { salt, hash } = await hashPassword(password);
       const now = new Date().toISOString();
@@ -281,6 +298,8 @@ function registerAuthRoutes(app, { store, audit, limiter = createLoginLimiter() 
         id: crypto.randomUUID(),
         email,
         name,
+        username,
+        usernameLower: username.toLowerCase(),
         role: "owner",
         passwordSalt: salt,
         passwordHash: hash,
@@ -291,7 +310,7 @@ function registerAuthRoutes(app, { store, audit, limiter = createLoginLimiter() 
 
       await store.users.insert(user);
       const session = await startSession(req, res, user);
-      await log({ kind: "auth", message: `Owner account created for ${email}` });
+      await log({ kind: "auth", message: `Owner account created for ${username} <${email}>` });
 
       return res.status(201).json({
         user: publicUser(user),
@@ -306,9 +325,9 @@ function registerAuthRoutes(app, { store, audit, limiter = createLoginLimiter() 
 
   app.post("/api/auth/login", async (req, res, next) => {
     try {
-      const email = normalizeEmail(req.body?.email);
+      const identifier = String(req.body?.identifier ?? req.body?.email ?? "").trim().toLowerCase();
       const password = String(req.body?.password || "");
-      const limitKey = `${req.ip || "unknown"}|${email}`;
+      const limitKey = `${req.ip || "unknown"}|${identifier}`;
       const wait = limiter.retryAfterSeconds(limitKey);
 
       if (wait) {
@@ -318,7 +337,7 @@ function registerAuthRoutes(app, { store, audit, limiter = createLoginLimiter() 
         });
       }
 
-      const user = email ? await store.users.find(email) : null;
+      const user = identifier ? await store.users.findByLogin(identifier) : null;
       const record = user
         ? { salt: user.passwordSalt, hash: user.passwordHash }
         : await dummyPasswordRecord();
@@ -326,7 +345,7 @@ function registerAuthRoutes(app, { store, audit, limiter = createLoginLimiter() 
 
       if (!user || !matches) {
         limiter.fail(limitKey);
-        return res.status(401).json({ error: "Email or password is incorrect." });
+        return res.status(401).json({ error: "Username, email, or password is incorrect." });
       }
 
       limiter.succeed(limitKey);
@@ -416,10 +435,14 @@ function registerAuthRoutes(app, { store, audit, limiter = createLoginLimiter() 
 
       const email = validateEmail(req.body?.email);
       const name = normalizeName(req.body?.name);
+      const username = validateUsername(req.body?.username);
       const password = validatePassword(req.body?.password);
 
       if (await store.users.find(email)) {
         return res.status(409).json({ error: "Someone already uses that email on this server." });
+      }
+      if (await store.users.findByLogin(username)) {
+        return res.status(409).json({ error: "Someone already uses that username on this server." });
       }
 
       const { salt, hash } = await hashPassword(password);
@@ -427,6 +450,8 @@ function registerAuthRoutes(app, { store, audit, limiter = createLoginLimiter() 
         id: crypto.randomUUID(),
         email,
         name,
+        username,
+        usernameLower: username.toLowerCase(),
         role: "member",
         passwordSalt: salt,
         passwordHash: hash,
@@ -436,7 +461,7 @@ function registerAuthRoutes(app, { store, audit, limiter = createLoginLimiter() 
       };
 
       await store.users.insert(user);
-      await log({ kind: "auth", message: `Member account created for ${email}` });
+      await log({ kind: "auth", message: `Member account created for ${username} <${email}>` });
       return res.status(201).json({ user: publicUser(user) });
     } catch (error) {
       return sendAuthError(res, error, next);
@@ -479,6 +504,8 @@ module.exports = {
   normalizeEmail,
   validateEmail,
   normalizeName,
+  normalizeUsername,
+  validateUsername,
   validatePassword,
   hashPassword,
   verifyPassword,

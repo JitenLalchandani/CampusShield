@@ -66,9 +66,13 @@ test("rejects weak account details", () => {
   assert.throws(() => auth.validateEmail("not-an-email"), /valid email/);
   assert.throws(() => auth.validatePassword("short"), /at least 10/);
   assert.throws(() => auth.normalizeName(" "), /name/);
+  assert.throws(() => auth.validateUsername("ab"), /username/);
+  assert.throws(() => auth.validateUsername("has space"), /username/);
+  assert.throws(() => auth.validateUsername(".leading"), /username/);
 
   assert.equal(auth.validateEmail("  Owner@Example.COM "), "owner@example.com");
   assert.equal(auth.validatePassword("a long passphrase"), "a long passphrase");
+  assert.equal(auth.validateUsername("  Meera.Patel "), "Meera.Patel");
 });
 
 test("parses and serializes session cookies", () => {
@@ -106,11 +110,12 @@ test("signup opens the API, then sessions are required", async () => {
     assert.equal(before.status, 200);
 
     const signup = await call("POST", "/api/auth/signup", {
-      body: { email: "owner@example.com", name: "Owner Person", password: "a long passphrase" }
+      body: { email: "owner@example.com", name: "Owner Person", username: "owner.person", password: "a long passphrase" }
     });
 
     assert.equal(signup.status, 201);
     assert.equal(signup.json.user.role, "owner");
+    assert.equal(signup.json.user.username, "owner.person");
     assert.equal(typeof signup.json.token, "string");
 
     const locked = await call("GET", "/api/protection");
@@ -127,7 +132,7 @@ test("signup opens the API, then sessions are required", async () => {
     assert.equal(me.json.user.email, "owner@example.com");
 
     const again = await call("POST", "/api/auth/signup", {
-      body: { email: "second@example.com", name: "Second Person", password: "another passphrase" }
+      body: { email: "second@example.com", name: "Second Person", username: "second.person", password: "another passphrase" }
     });
     assert.equal(again.status, 409);
   });
@@ -136,7 +141,7 @@ test("signup opens the API, then sessions are required", async () => {
 test("login, logout, and password change behave", async () => {
   await withServer(async ({ call }) => {
     const signup = await call("POST", "/api/auth/signup", {
-      body: { email: "owner@example.com", name: "Owner Person", password: "a long passphrase" }
+      body: { email: "owner@example.com", name: "Owner Person", username: "owner.person", password: "a long passphrase" }
     });
     const ownerToken = signup.json.token;
 
@@ -151,9 +156,15 @@ test("login, logout, and password change behave", async () => {
     assert.equal(login.status, 200);
     assert.equal(login.json.user.lastLoginAt !== null, true);
 
+    const byUsername = await call("POST", "/api/auth/login", {
+      body: { identifier: "OWNER.PERSON", password: "a long passphrase" }
+    });
+    assert.equal(byUsername.status, 200);
+    assert.equal(byUsername.json.user.username, "owner.person");
+
     const member = await call("POST", "/api/auth/users", {
       token: ownerToken,
-      body: { email: "member@example.com", name: "Member Person", password: "member passphrase" }
+      body: { email: "member@example.com", name: "Member Person", username: "member.person", password: "member passphrase" }
     });
     assert.equal(member.status, 201);
     assert.equal(member.json.user.role, "member");
@@ -198,7 +209,7 @@ test("login, logout, and password change behave", async () => {
 test("unknown emails still pay the password hash cost", async () => {
   await withServer(async ({ call }) => {
     await call("POST", "/api/auth/signup", {
-      body: { email: "owner@example.com", name: "Owner Person", password: "a long passphrase" }
+      body: { email: "owner@example.com", name: "Owner Person", username: "owner.person", password: "a long passphrase" }
     });
 
     const started = Date.now();
@@ -207,7 +218,7 @@ test("unknown emails still pay the password hash cost", async () => {
     });
 
     assert.equal(missing.status, 401);
-    assert.equal(missing.json.error, "Email or password is incorrect.");
+    assert.equal(missing.json.error, "Username, email, or password is incorrect.");
     assert.ok(Date.now() - started >= 20, "dummy hash verification ran");
   });
 });

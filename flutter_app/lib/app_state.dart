@@ -95,22 +95,28 @@ class AppState extends ChangeNotifier {
 
   Future<void> createAccount({
     required String name,
+    required String username,
     required String email,
     required String password,
     required String baseUrl,
   }) async {
     await _setBaseUrl(baseUrl);
-    final session = await api.signup(name: name, email: email, password: password);
+    final session = await api.signup(
+      name: name,
+      username: username,
+      email: email,
+      password: password,
+    );
     await _applySession(session);
   }
 
   Future<void> signIn({
-    required String email,
+    required String identifier,
     required String password,
     required String baseUrl,
   }) async {
     await _setBaseUrl(baseUrl);
-    final session = await api.login(email: email, password: password);
+    final session = await api.login(identifier: identifier, password: password);
     await _applySession(session);
   }
 
