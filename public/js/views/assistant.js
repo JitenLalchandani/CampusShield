@@ -1,10 +1,10 @@
 import { api, getAiConfig, isAiConfigured } from "../api.js";
-import { esc, icon, num, relativeTime, sevClass, toast } from "../ui.js";
+import { esc, icon, iconForKind, num, relativeTime, sevClass, toast } from "../ui.js";
 
 export const meta = {
-  eyebrow: "Protection assistant",
-  title: "How to stay protected",
-  subtitle: "Guidance from real checks, scans, and listening ports. The AI explains the facts; it never decides detections."
+  eyebrow: "Security overview",
+  title: "Your device, checked for real",
+  subtitle: "One test runs a read-only device check, a full file scan, and a socket read. Every value comes from this computer — nothing is demo data."
 };
 
 const chatHistory = [];
@@ -17,37 +17,69 @@ export async function render(root) {
   clearTimeout(pollingTimer);
   pollingTimer = null;
   running = false;
+  delete root.dataset.activeScan;
 
   root.innerHTML = `
-    <section class="card">
-      <div class="card-head">
-        <div>
-          <h2>How to stay protected</h2>
-          <p>One test runs a read-only device check, a full file scan of this computer, and a read of every listening port. Nothing is estimated.</p>
+    <section class="hero-card">
+      <div class="hero-main">
+        <span class="hero-badge" id="heroBadge">THIS DEVICE</span>
+        <h2 class="hero-title">Your device.<br><span>Real checks, no guesses.</span></h2>
+        <p class="hero-sub">
+          One test reads this computer's settings, scans every readable file, and reads the listening
+          socket table. Nothing on this page is simulated.
+        </p>
+        <div class="hero-actions">
+          <button class="btn primary lg" id="runTestBtn" type="button">
+            ${icon("scan")}<span>Run full scan</span>
+          </button>
+          <button class="btn subtle" id="quickScanBtn" type="button">Quick scan</button>
+          <button class="btn ghost small" id="refreshSuggestionsBtn" type="button">Refresh</button>
+          <span class="chip" id="testChip">${loadedOnce ? "Ready" : "Loading"}</span>
         </div>
-        <span class="chip" id="testChip">${loadedOnce ? "Ready" : "Loading"}</span>
+        <p class="hero-note">
+          A full scan reads files under your home folder plus the app folders, then the socket table.
+          It can take several minutes; the file count updates live. Ports are reported, never probed or scored.
+        </p>
       </div>
 
-      <div class="assistant-facts" id="assistantFacts">
-        <div class="fact-tile"><span class="fact-label">Device score</span><strong>—</strong><small>Reading stored checks…</small></div>
-      </div>
-
-      <div class="form-row" style="margin-top:14px">
-        <button class="btn primary" id="runTestBtn" type="button">
-          ${icon("scan")}<span>Run full scan</span>
-        </button>
-        <button class="btn subtle" id="quickScanBtn" type="button">Quick scan</button>
-        <button class="btn subtle" id="refreshSuggestionsBtn" type="button">Refresh suggestions</button>
-      </div>
-      <p class="tiny" style="margin-top:8px">
-        A full scan reads files under your home folder plus the app folders, then reads the socket table.
-        It can take several minutes; the file count updates live. Ports are reported, never probed or scored.
-      </p>
-
-      <div class="test-run" id="testRun" hidden></div>
+      <aside class="hero-side" aria-label="Live posture">
+        <div class="hero-ring" id="heroRing" style="--score:0%;--ring:rgba(255,255,255,0.14)">
+          <div>
+            <strong id="heroScore">—</strong>
+            <small>Safety score</small>
+          </div>
+        </div>
+        <ul class="hero-facts">
+          <li><span>Signatures</span><strong id="heroSignatures">—</strong></li>
+          <li><span>Last scan</span><strong id="heroLastScan">—</strong></li>
+          <li><span>Ports reachable</span><strong id="heroPorts">—</strong></li>
+        </ul>
+      </aside>
     </section>
 
-    <div class="assistant-grid">
+    <div class="test-run" id="testRun" hidden></div>
+
+    <div class="stat-grid" id="assistantFacts">
+      <div class="stat-card"><span class="stat-label">Safety score</span><strong class="stat-value">—</strong><small>Reading stored checks…</small></div>
+    </div>
+
+    <section class="card coverage-card">
+      <div class="card-head">
+        <div>
+          <h2>Protection coverage</h2>
+          <p>Each tile is filled from a real reading on this computer.</p>
+        </div>
+        <span class="chip" id="coverageChip">Loading</span>
+      </div>
+      <div class="coverage-grid" id="coverageGrid">
+        <div class="coverage-tile"><span class="cov-title">Reading…</span></div>
+      </div>
+      <p class="tiny" id="coverageFoot">
+        No coverage value is simulated. A tile reads "Not read" until the matching check has actually run.
+      </p>
+    </section>
+
+    <div class="dash-grid">
       <div class="stack">
         <section class="card" id="aiCard">
           <div class="card-head">
@@ -59,23 +91,10 @@ export async function render(root) {
           <p class="helper">Checking whether an AI endpoint is configured…</p>
         </section>
 
-        <section class="card" id="networkCard">
-          <div class="card-head">
-            <div>
-              <h2>Network exposure</h2>
-              <p>Listening sockets read from this computer</p>
-            </div>
-            <span class="chip" id="networkChip">—</span>
-          </div>
-          <div id="networkBody">
-            <p class="helper">No port audit has run yet. Run a full scan to read the socket table.</p>
-          </div>
-        </section>
-
         <section class="card">
           <div class="card-head">
             <div>
-              <h2>Recommended next steps</h2>
+              <h2>Prioritized next steps</h2>
               <p id="recCaption">Derived from stored checks, scans, and quarantine records.</p>
             </div>
             <span class="chip" id="recCount">—</span>
@@ -87,34 +106,107 @@ export async function render(root) {
         </section>
       </div>
 
-      <section class="card chat-card">
+      <section class="card feed-card">
         <div class="card-head">
           <div>
-            <h2>Ask CampusShield</h2>
-            <p>Answers use the same stored facts as the dashboard.</p>
+            <h2>Event feed</h2>
+            <p>Checks, scans, and account actions as they are recorded.</p>
           </div>
+          <span class="chip" id="feedChip">—</span>
         </div>
 
-        <div class="chat-log" id="chatLog"></div>
-
-        <div class="chat-chips">
-          <button class="filter-chip" type="button" data-chat-prompt="Run a full scan">Run a full scan</button>
-          <button class="filter-chip" type="button" data-chat-prompt="What is my status?">What is my status?</button>
-          <button class="filter-chip" type="button" data-chat-prompt="Any threats?">Any threats?</button>
+        <div class="readiness">
+          <div class="readiness-head">
+            <span>Safety score</span>
+            <strong id="readinessValue">—</strong>
+          </div>
+          <div class="readiness-track"><span id="readinessBar" style="width:0%" data-tone="neutral"></span></div>
+          <small id="readinessNote">Run a device check to create a real score.</small>
         </div>
 
-        <form class="chat-form" id="chatForm">
-          <input class="input" id="chatInput" type="text" maxlength="2000" autocomplete="off"
-            placeholder="Ask about your device, scans, or detections" aria-label="Ask the assistant">
-          <button class="btn primary" id="chatSend" type="submit">Send</button>
-        </form>
+        <div class="feed-list" id="feedList">
+          <p class="helper">Reading the audit log…</p>
+        </div>
 
-        <p class="tiny">
-          AI guidance is advisory. CampusShield decides detections locally; the assistant cannot change
-          results, quarantine files, or edit settings.
-        </p>
+        <a class="feed-link" href="#/activity">Open the full activity log</a>
       </section>
     </div>
+
+    <section class="card" id="networkCard" style="margin-top:13px">
+      <div class="card-head">
+        <div>
+          <h2>Network exposure</h2>
+          <p>Listening sockets read from this computer</p>
+        </div>
+        <span class="chip" id="networkChip">—</span>
+      </div>
+      <div id="networkBody">
+        <p class="helper">No port audit has run yet. Run a full scan to read the socket table.</p>
+      </div>
+    </section>
+
+    <section class="card chat-card">
+      <div class="card-head">
+        <div>
+          <h2>Ask CampusShield</h2>
+          <p>Answers use the same stored facts as the dashboard.</p>
+        </div>
+      </div>
+
+      <div class="chat-log" id="chatLog"></div>
+
+      <div class="chat-chips">
+        <button class="filter-chip" type="button" data-chat-prompt="Run a full scan">Run a full scan</button>
+        <button class="filter-chip" type="button" data-chat-prompt="What is my status?">What is my status?</button>
+        <button class="filter-chip" type="button" data-chat-prompt="Any threats?">Any threats?</button>
+      </div>
+
+      <form class="chat-form" id="chatForm">
+        <input class="input" id="chatInput" type="text" maxlength="2000" autocomplete="off"
+          placeholder="Ask about your device, scans, or detections" aria-label="Ask the assistant">
+        <button class="btn primary" id="chatSend" type="submit">Send</button>
+      </form>
+
+      <p class="tiny">
+        AI guidance is advisory. CampusShield decides detections locally; the assistant cannot change
+        results, quarantine files, or edit settings.
+      </p>
+    </section>
+
+    <section class="card steps-card">
+      <div class="card-head">
+        <div>
+          <h2>How CampusShield works</h2>
+          <p>Four steps, each backed by what actually ran on this machine.</p>
+        </div>
+      </div>
+      <ol class="steps-grid">
+        <li class="step">
+          <span class="step-no">1</span>
+          ${icon("scan")}
+          <strong>Run the test</strong>
+          <p>A read-only device check, a file scan, and a socket read start together.</p>
+        </li>
+        <li class="step">
+          <span class="step-no">2</span>
+          ${icon("layers")}
+          <strong>See what was found</strong>
+          <p>Settings, file detections, and reachable listeners are listed with their evidence.</p>
+        </li>
+        <li class="step">
+          <span class="step-no">3</span>
+          ${icon("shield")}
+          <strong>Fix or contain</strong>
+          <p>Quarantine flagged files, change a setting yourself, or close a port you did not mean to share.</p>
+        </li>
+        <li class="step">
+          <span class="step-no">4</span>
+          ${icon("activity")}
+          <strong>Keep the record</strong>
+          <p>Every check, scan, and decision is logged so the next run has a baseline.</p>
+        </li>
+      </ol>
+    </section>
   `;
 
   paintChat(root);
@@ -131,7 +223,7 @@ export async function render(root) {
 
   await load(root, { quiet: false });
 
-  const activeScan = root.querySelector("#assistantFacts")?.dataset.activeScan;
+  const activeScan = root.dataset.activeScan;
 
   if (activeScan) {
     showRunPanel(root);
@@ -156,10 +248,14 @@ async function load(root, { quiet }) {
     const data = await api("/api/assistant/suggest", { method: "POST", body: aiBody() });
 
     loadedOnce = true;
+    paintHero(root, data.snapshot);
     paintFacts(root, data.snapshot);
+    paintCoverage(root, data.snapshot);
+    paintReadiness(root, data.snapshot);
     paintNetwork(root, data.snapshot.network);
     paintAi(root, data);
     paintRecs(root, data);
+    await refreshFeed(root);
 
     const chip = root.querySelector("#testChip");
 
@@ -168,10 +264,9 @@ async function load(root, { quiet }) {
     }
 
     if (data.snapshot.scanner.activeScan) {
-      const facts = root.querySelector("#assistantFacts");
-      facts && facts.setAttribute("data-active-scan", data.snapshot.scanner.activeScan.id);
+      root.dataset.activeScan = data.snapshot.scanner.activeScan.id;
     } else {
-      root.querySelector("#assistantFacts")?.removeAttribute("data-active-scan");
+      delete root.dataset.activeScan;
     }
 
     return data;
@@ -191,6 +286,65 @@ async function load(root, { quiet }) {
   }
 }
 
+function scoreTone(score) {
+  if (!Number.isFinite(score)) return "";
+  if (score >= 85) return "ok";
+  if (score >= 70) return "warn";
+  return "risk";
+}
+
+function paintHero(root, snapshot) {
+  const host = snapshot.host;
+  const network = snapshot.network;
+  const lastScan = snapshot.lastScan;
+  const score = host && Number.isFinite(host.score) ? Math.round(host.score) : null;
+  const badge = root.querySelector("#heroBadge");
+  const platform = (host && host.platform) || snapshot.platform || "this host";
+
+  if (badge) {
+    badge.textContent = `THIS DEVICE · ${platform}`;
+    if (host?.name) badge.title = host.name;
+  }
+
+  const scoreEl = root.querySelector("#heroScore");
+  const ring = root.querySelector("#heroRing");
+
+  if (scoreEl) scoreEl.textContent = score === null ? "—" : String(score);
+  if (ring) {
+    const color = score === null
+      ? "rgba(255,255,255,0.14)"
+      : score >= 85
+        ? "var(--green)"
+        : score >= 70
+          ? "var(--amber)"
+          : "var(--red)";
+    ring.style.setProperty("--score", `${score === null ? 0 : Math.max(0, Math.min(100, score))}%`);
+    ring.style.setProperty("--ring", color);
+    ring.title = score === null
+      ? "No device check has run yet"
+      : `${host?.grade || "Checked"} · ${relativeTime(host?.checkedAt)}`;
+  }
+
+  const signatures = root.querySelector("#heroSignatures");
+  if (signatures) signatures.textContent = num(snapshot.scanner.signatureCount);
+
+  const lastScanEl = root.querySelector("#heroLastScan");
+  if (lastScanEl) {
+    lastScanEl.textContent = lastScan
+      ? relativeTime(lastScan.finishedAt || lastScan.startedAt)
+      : "Never";
+  }
+
+  const ports = root.querySelector("#heroPorts");
+  if (ports) {
+    ports.textContent = network
+      ? network.supported
+        ? num(network.networkBound)
+        : "Unread"
+      : "Not read";
+  }
+}
+
 function paintFacts(root, snapshot) {
   const facts = root.querySelector("#assistantFacts");
 
@@ -198,55 +352,216 @@ function paintFacts(root, snapshot) {
 
   const host = snapshot.host;
   const lastScan = snapshot.lastScan;
-  const score = host && Number.isFinite(host.score) ? `${Math.round(host.score)}/100` : "Not checked";
+  const score = host && Number.isFinite(host.score) ? Math.round(host.score) : null;
+  const scoreDisplay = score === null ? "Not checked" : String(score);
   const scoreNote = host
     ? `${host.name || "This host"}${host.grade ? ` · ${host.grade}` : ""}${host.checkedAt ? ` · ${relativeTime(host.checkedAt)}` : ""}`
     : "Run a device check to create a score.";
-  const scanValue = lastScan ? `${num(lastScan.filesScanned)} files` : "Never";
+  const scanValue = lastScan ? num(lastScan.filesScanned) : "0";
   const scanNote = lastScan
-    ? `${esc(lastScan.scope)} scan · ${relativeTime(lastScan.finishedAt || lastScan.startedAt)} · ${num(lastScan.threatCount)} detection${lastScan.threatCount === 1 ? "" : "s"}`
+    ? `${esc(lastScan.scope)} scan ${relativeTime(lastScan.finishedAt || lastScan.startedAt)}${lastScan.threatCount ? ` · ${num(lastScan.threatCount)} flagged` : ""}`
     : "No file scan is recorded yet.";
   const openThreats = snapshot.openThreats.length;
-  const quarantine = snapshot.quarantine.count;
   const network = snapshot.network;
   const networkValue = network
     ? network.supported
-      ? `${num(network.networkBound)}`
+      ? num(network.networkBound)
       : "Unread"
     : "Not read";
   const networkNote = network
     ? network.supported
-      ? `${num(network.total)} listeners · ${num(network.loopbackOnly)} loopback-only · ${relativeTime(network.readAt)}`
+      ? `${num(network.total)} listeners · ${num(network.loopbackOnly)} loopback only${network.riskyCount ? ` · ${num(network.riskyCount)} sensitive` : ""}`
       : network.error || "The socket table could not be read."
     : "Run a full scan to read the socket table.";
 
   facts.innerHTML = `
-    <div class="fact-tile">
-      <span class="fact-label">Device score</span>
-      <strong>${esc(score)}</strong>
+    <div class="stat-card" data-tone="${scoreTone(score)}">
+      <span class="stat-icon">${icon("shield")}</span>
+      <span class="stat-label">Safety score</span>
+      <strong class="stat-value">${esc(scoreDisplay)}${score === null ? "" : `<span class="stat-unit">/100</span>`}</strong>
       <small>${esc(scoreNote)}</small>
     </div>
-    <div class="fact-tile">
-      <span class="fact-label">Last scan</span>
-      <strong>${esc(scanValue)}</strong>
+    <div class="stat-card">
+      <span class="stat-icon">${icon("scan")}</span>
+      <span class="stat-label">Files scanned</span>
+      <strong class="stat-value">${esc(scanValue)}</strong>
       <small>${scanNote}</small>
     </div>
-    <div class="fact-tile" data-tone="${network?.riskyCount ? "risk" : ""}">
-      <span class="fact-label">Network reachable</span>
-      <strong>${esc(networkValue)}</strong>
-      <small>${esc(networkNote)}</small>
-    </div>
-    <div class="fact-tile" data-tone="${openThreats ? "risk" : "ok"}">
-      <span class="fact-label">Open detections</span>
-      <strong>${num(openThreats)}</strong>
+    <div class="stat-card" data-tone="${openThreats ? "risk" : "ok"}">
+      <span class="stat-icon">${icon("alert")}</span>
+      <span class="stat-label">Open detections</span>
+      <strong class="stat-value">${num(openThreats)}</strong>
       <small>${openThreats ? "Waiting for a decision" : "Nothing flagged right now"}</small>
     </div>
-    <div class="fact-tile">
-      <span class="fact-label">Quarantine</span>
-      <strong>${num(quarantine)}</strong>
-      <small>${quarantine ? "Contained files remain recoverable" : "Nothing is contained"}</small>
+    <div class="stat-card" data-tone="${network?.supported && network.riskyCount ? "risk" : network?.supported ? "ok" : ""}">
+      <span class="stat-icon">${icon("browser")}</span>
+      <span class="stat-label">Network reachable</span>
+      <strong class="stat-value">${esc(networkValue)}</strong>
+      <small>${esc(networkNote)}</small>
     </div>
   `;
+}
+
+function paintCoverage(root, snapshot) {
+  const grid = root.querySelector("#coverageGrid");
+  const chip = root.querySelector("#coverageChip");
+
+  if (!grid) return;
+
+  const host = snapshot.host;
+  const lastScan = snapshot.lastScan;
+  const network = snapshot.network;
+  const scanner = snapshot.scanner;
+  const score = host && Number.isFinite(host.score) ? Math.round(host.score) : null;
+
+  const tiles = [
+    {
+      iconName: "shield",
+      title: "Device settings",
+      value: score === null ? "Not checked" : `${score}/100`,
+      chip: host?.grade || (score === null ? "Unchecked" : "Checked"),
+      tone: scoreTone(score),
+      note: score === null
+        ? "No read-only posture check has run yet."
+        : `Read ${relativeTime(host.checkedAt)}; settings were not changed.`
+    },
+    {
+      iconName: "scan",
+      title: "File scanning",
+      value: lastScan ? `${num(lastScan.filesScanned)} files` : "Not run",
+      chip: lastScan ? lastScan.scope : "Never",
+      tone: lastScan ? "" : "warn",
+      note: lastScan
+        ? `${num(lastScan.threatCount)} detection${lastScan.threatCount === 1 ? "" : "s"} · last finished ${relativeTime(lastScan.finishedAt || lastScan.startedAt)}`
+        : "No file scan is recorded yet."
+    },
+    {
+      iconName: "browser",
+      title: "Network exposure",
+      value: network
+        ? network.supported
+          ? `${num(network.networkBound)} reachable`
+          : "Unread"
+        : "Not read",
+      chip: network?.supported
+        ? network.riskyCount
+          ? `${num(network.riskyCount)} sensitive`
+          : "No sensitive port"
+        : "Unread",
+      tone: network?.supported && network.riskyCount ? "risk" : network?.supported ? "ok" : "",
+      note: network
+        ? network.supported
+          ? `${num(network.total)} listeners read ${relativeTime(network.readAt)}; nothing was contacted.`
+          : network.error || "The socket table could not be read."
+        : "Run a full scan to read the socket table."
+    },
+    {
+      iconName: "lock",
+      title: "Real-time watch",
+      value: scanner.realtime ? "On" : scanner.watchSupported ? "Off" : "Unsupported",
+      chip: scanner.realtime ? "Watching" : "Manual",
+      tone: scanner.realtime ? "ok" : "",
+      note: scanner.realtime
+        ? "Downloads, Desktop, and Documents are watched as files appear."
+        : scanner.watchSupported
+          ? "Folder watching is available but turned off."
+          : "This platform does not support the folder watcher."
+    }
+  ];
+
+  grid.innerHTML = tiles.map(tile => `
+    <div class="coverage-tile">
+      <div class="cov-top">
+        <span class="cov-icon">${icon(tile.iconName)}</span>
+        <span class="cov-chip" data-tone="${tile.tone}">${esc(tile.chip)}</span>
+      </div>
+      <span class="cov-title">${esc(tile.title)}</span>
+      <strong class="cov-value">${esc(tile.value)}</strong>
+      <small class="cov-note">${esc(tile.note)}</small>
+    </div>`).join("");
+
+  if (chip) {
+    const read = [host && Number.isFinite(host.score), Boolean(lastScan), Boolean(network?.supported), true]
+      .filter(Boolean).length;
+    chip.textContent = `${read}/4 read`;
+  }
+
+  const foot = root.querySelector("#coverageFoot");
+  if (foot) {
+    foot.textContent = scanner.signatureCount
+      ? `${num(scanner.signatureCount)} local signatures loaded${scanner.signatureVersion ? ` · ${scanner.signatureVersion}` : ""}. Watch mode and schedule reflect saved preferences, not a claim that they are running.`
+      : "No signature set is loaded, so file scanning falls back to built-in heuristics.";
+  }
+}
+
+function paintReadiness(root, snapshot) {
+  const value = root.querySelector("#readinessValue");
+  const bar = root.querySelector("#readinessBar");
+  const note = root.querySelector("#readinessNote");
+  const host = snapshot.host;
+  const score = host && Number.isFinite(host.score) ? Math.round(host.score) : null;
+
+  if (value) value.textContent = score === null ? "Not checked" : `${score}/100`;
+  if (bar) {
+    bar.style.width = `${score === null ? 0 : Math.max(0, Math.min(100, score))}%`;
+    bar.dataset.tone = scoreTone(score) || "neutral";
+  }
+  if (note) {
+    note.textContent = score === null
+      ? "Run a device check to create a real score."
+      : `From the last read-only check${host.grade ? ` (${host.grade})` : ""} ${relativeTime(host.checkedAt)}.`;
+  }
+}
+
+async function refreshFeed(root) {
+  const list = root.querySelector("#feedList");
+  const chip = root.querySelector("#feedChip");
+
+  if (!list) return;
+
+  try {
+    const data = await api("/api/activity?limit=6");
+    const entries = (data.activity || []).filter(entry => entry && entry.message);
+
+    if (chip) chip.textContent = data.total ? `${num(data.total)} logged` : "Empty";
+
+    if (!entries.length) {
+      list.innerHTML = `
+        <div class="empty compact">
+          ${icon("activity")}
+          <strong>No activity recorded yet</strong>
+          <p>Run a full scan or a device check; each action is written to the audit log.</p>
+        </div>`;
+      return;
+    }
+
+    list.innerHTML = entries.map(feedItem).join("");
+  } catch (error) {
+    if (chip) chip.textContent = "Unavailable";
+    list.innerHTML = `
+      <div class="empty compact">
+        ${icon("alert")}
+        <strong>Activity could not be read</strong>
+        <p>${esc(error.message)}</p>
+      </div>`;
+  }
+}
+
+function feedItem(entry) {
+  const kind = iconForKind(entry.kind);
+  const severity = entry.severity
+    ? `<span class="feed-sev ${sevClass(entry.severity)}">${esc(entry.severity)}</span>`
+    : "";
+
+  return `
+    <div class="feed-item">
+      <span class="feed-icon ${esc(kind.className)}">${icon(kind.icon)}</span>
+      <div class="feed-body">
+        <strong>${esc(entry.message)}</strong>
+        <small>${esc(relativeTime(entry.time))}${entry.kind ? ` · ${esc(entry.kind)}` : ""}</small>
+      </div>
+      ${severity}
+    </div>`;
 }
 
 function paintNetwork(root, network) {
@@ -343,20 +658,21 @@ function paintAi(root, data) {
     card.innerHTML = `
       <div class="card-head">
         <div>
-          <h2>AI suggestions need an endpoint</h2>
-          <p>Connect an OpenAI-compatible endpoint to get explanations</p>
+          <h2>AI suggestions</h2>
+          <p>Optional explanation layer, never a detector</p>
         </div>
         <span class="chip">Not configured</span>
       </div>
       <p class="helper">
-        ${esc(data.aiSetup || "Add an endpoint in Settings to get AI explanations.")}
+        Connect an OpenAI-compatible endpoint in Settings to get written explanations of the same facts
+        shown here. Until then, the prioritized steps below are generated from real checks without AI.
       </p>
       <p class="helper">
-        The recommendation list and every number on this page already come from real checks and scans.
-        The AI only adds explanation and cannot change a detection.
+        The prioritized steps, every score, and every detection are already produced from real checks
+        and scans. The AI only adds explanation and cannot change a detection.
       </p>
       <div class="form-row" style="margin-top:10px">
-        <a class="btn subtle small" href="#/settings">Open AI settings</a>
+        <a class="btn subtle small" href="#/settings">Add an AI endpoint</a>
       </div>
     `;
     return;
