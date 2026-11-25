@@ -94,8 +94,9 @@ each store version can promise.
 - **Breached-password check** — SHA-1 is computed in the browser; only the first five hash characters
   go to the Pwned Passwords range API (k-anonymity). The password and full hash never leave the device.
 - **Threat queue** — search, severity/status/type filters, sorting, paging, and a decision drawer.
-- **Actions and audit trail** — Investigate, Contain (label only), and Reopen, each appended to an
-  activity log with kind filters that now include device checks.
+- **Actions and audit trail** — Investigate and Reopen review decisions, each appended to an
+  activity log with kind filters that now include device checks. The old "Contain (demo)" action was
+  removed because it only changed a label. Each queued event also shows where it came from.
 - **Coverage** — an honest map of what is collected and what is not.
 - **Storage** — MongoDB Atlas when `MONGODB_URI` is set, otherwise a zero-config local JSON store.
 - **PWA, Electron, Capacitor** — installable web app, embedded-server desktop app, and native shells.
@@ -340,7 +341,7 @@ is configured. For LAN development over plain HTTP:
 | `GET` | `/api/activity` | Audit trail (`kind`, `limit`, `offset`) |
 | `POST` | `/api/events` | Ingest an approved event |
 | `POST` | `/api/scan` | Scan the local macOS log (macOS only, otherwise `501`) |
-| `POST` | `/api/alerts/:id/action` | `{"action":"Investigate" \| "Contain" \| "Reopen"}` |
+| `POST` | `/api/alerts/:id/action` | `{"action":"Investigate" \| "Reopen"}` (`Contain` returns 400) |
 | `DELETE` | `/api/events` | Clear events, actions, devices, scans, quarantine, and audit history |
 
 Device check example:
@@ -414,7 +415,11 @@ treat any event source as trusted input. Serve a deployment beyond localhost ove
   recommendations.
 - Scheduled scans run only while the app/server process is open; there is no background service, so a
   missed schedule waits for the next launch instead of running silently.
-- Containment records a status only; no device, account, or network state is changed.
+- Queue actions record a review decision only; no device, account, or network state is changed.
+  Older stores that hold the removed "Contained (demo)" status show those events as Open.
+- Real data only: every score, count, and timestamp comes from a measurement on this computer. What
+  cannot be measured shows "Not checked" with a reason. The scan progress bar is indeterminate because
+  the total file count is unknown until the walk ends; the numbers beside it are the measurement.
 - Accounts are local to the server you run: no e-mail verification, password reset, or multi-factor
   authentication, and roles are only owner/member. The API is open to anyone who can reach it only
   until the first account (or API token) exists; after that, callers need a session or token.

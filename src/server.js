@@ -15,7 +15,16 @@ const assistant = require("./assistant");
 const { collectNetworkExposure } = require("./networkAudit");
 
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
-const ACTIONS = ["Investigate", "Contain", "Reopen"];
+// "Contain" was removed from the event queue: it only changed a label and never touched a
+// device. Real containment exists only for verified shield alerts.
+const ACTIONS = ["Investigate", "Reopen"];
+const REMOVED_DEMO_STATUS = "Contained (demo)";
+
+function originLabel(origin) {
+  if (origin === "macos-log-scan") return "Found by the macOS log scan on this computer";
+  if (origin === "api") return "Added through the events API (not verified by CampusShield)";
+  return "Source not recorded (older event, not verified)";
+}
 const DEVICE_PLATFORMS = ["darwin", "win32", "linux", "ios", "android", "web"];
 const DEVICE_KINDS = ["computer", "phone", "tablet", "browser"];
 const DEVICE_SOURCES = ["web", "native", "electron"];
@@ -87,13 +96,18 @@ function detect(event, action = null) {
     recommendation = "Verify the asset and plan an approved patch";
   }
 
+  // Older stores may hold the removed demo status. It never changed a device, so it reads as Open.
+  const legacyDemoAction = Boolean(action && action.status === REMOVED_DEMO_STATUS);
+
   return {
     ...event,
     severity,
     rule,
     recommendation,
-    status: action ? action.status : "Open",
-    statusUpdatedAt: action ? action.time : null
+    status: action && !legacyDemoAction ? action.status : "Open",
+    statusUpdatedAt: action ? action.time : null,
+    legacyDemoAction,
+    originLabel: originLabel(event.origin)
   };
 }
 
@@ -625,7 +639,7 @@ function createApp({ store, dataDir }) {
     ]);
 
     const severity = { HIGH: 0, MEDIUM: 0, LOW: 0 };
-    const statusCounts = { Open: 0, "Under review": 0, "Contained (demo)": 0 };
+    const statusCounts = { Open: 0, "Under review": 0 };
 
     for (const alert of alerts) {
       severity[alert.severity] = (severity[alert.severity] || 0) + 1;
@@ -640,7 +654,6 @@ function createApp({ store, dataDir }) {
         alert => alert.severity === "HIGH" && alert.status === "Open"
       ).length,
       underReview: statusCounts["Under review"],
-      contained: statusCounts["Contained (demo)"],
       open: statusCounts.Open,
       severity,
       statusCounts,
@@ -1320,7 +1333,8 @@ function createApp({ store, dataDir }) {
       type: String(type).slice(0, 120),
       source: String(source).slice(0, 120),
       count,
-      detail: detail ? String(detail).slice(0, 500) : "Event received"
+      detail: detail ? String(detail).slice(0, 500) : "Event received",
+      origin: "api"
     };
 
     try {
@@ -1365,7 +1379,8 @@ function createApp({ store, dataDir }) {
           type: finding.type,
           source: finding.source,
           count: finding.count,
-          detail: finding.description
+          detail: finding.description,
+          origin: "macos-log-scan"
         };
 
         try {
@@ -1413,6 +1428,14 @@ function createApp({ store, dataDir }) {
   app.post("/api/alerts/:id/action", async (req, res) => {
     const { action } = req.body || {};
 
+    if (action === "Contain") {
+      return res.status(400).json({
+        error:
+          "Containment is not available for queued events: it only changed a label and never " +
+          "touched a device. Use Investigate or Reopen."
+      });
+    }
+
     if (!ACTIONS.includes(action)) {
       return res.status(400).json({
         error: `Action must be one of: ${ACTIONS.join(", ")}`
@@ -1425,11 +1448,7 @@ function createApp({ store, dataDir }) {
       return res.status(404).json({ error: "Event not found" });
     }
 
-    const status = action === "Contain"
-      ? "Contained (demo)"
-      : action === "Investigate"
-        ? "Under review"
-        : "Open";
+    const status = action === "Investigate" ? "Under review" : "Open";
 
     const actionRecord = {
       eventId: event.id,
@@ -1455,7 +1474,7 @@ function createApp({ store, dataDir }) {
       event: alert,
       note: status === "Open"
         ? "Event reopened for review."
-        : "Action history saved. This prototype has not changed or contained any real device or account."
+        : "Action history saved. This only records a review decision; it did not change any device or account."
     });
   });
 

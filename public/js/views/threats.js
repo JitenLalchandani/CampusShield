@@ -60,7 +60,6 @@ export async function render(root) {
           ${option("all", "All statuses", filters.status)}
           ${option("Open", "Open", filters.status)}
           ${option("Under review", "Under review", filters.status)}
-          ${option("Contained (demo)", "Contained", filters.status)}
         </select>
       </label>
       <label class="field">
