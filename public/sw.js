@@ -1,4 +1,4 @@
-const VERSION = "campusshield-v12";
+const VERSION = "campusshield-v13";
 
 const SHELL = [
   "/",
@@ -17,6 +17,7 @@ const SHELL = [
   "/js/views/activity.js",
   "/js/views/coverage.js",
   "/js/views/settings.js",
+  "/js/views/shield.js",
   "/manifest.webmanifest",
   "/icons/icon-192.png",
   "/icons/icon-512.png",

@@ -15,6 +15,7 @@ import {
   scanProof,
   toast
 } from "../ui.js";
+import { bindShieldCard, renderShieldCard } from "./shield.js";
 
 export const meta = {
   eyebrow: "Protection",
@@ -61,9 +62,11 @@ export async function render(root) {
     </div>
   `;
 
-  const [protection, summary] = await Promise.all([
+  const [protection, summary, shieldStatus, shieldAlerts] = await Promise.all([
     api("/api/protection"),
-    api("/api/summary")
+    api("/api/summary"),
+    api("/api/shield").catch(() => null),
+    api("/api/shield/alerts?limit=10").then(data => data.alerts || []).catch(() => [])
   ]);
 
   const devices = Array.isArray(protection.devices) ? protection.devices : [];
@@ -247,6 +250,8 @@ export async function render(root) {
             actionAttrs: 'data-action="device-check"'
           })}</div>`}
     </section>
+
+    ${renderShieldCard(shieldStatus, shieldAlerts)}
 
     <section class="card protect-section scan-section" id="scanSection">
       <div class="card-head">
@@ -455,6 +460,7 @@ export async function render(root) {
   `;
 
   bind(root);
+  bindShieldCard(root, () => render(root));
 
   if (activeScan) pollScan(root, activeScan.id);
 }

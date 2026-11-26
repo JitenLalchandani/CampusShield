@@ -37,7 +37,9 @@ const PLATFORM_LABELS = {
   web: "Web"
 };
 const HOST_DEVICE_ID = "local-host";
-const { auditHost, gradeFor, RULES_VERSION } = require("./deviceAudit");
+const { auditHost, gradeFor, scoreFindings, RULES_VERSION } = require("./deviceAudit");
+const { createShieldService } = require("./shield/service");
+const { registerShieldRoutes } = require("./shield/routes");
 
 function platformLabel(platform) {
   return PLATFORM_LABELS[platform] || platform || "Unknown";
@@ -224,19 +226,44 @@ function protectionSummary(devices) {
   };
 }
 
-function createApp({ store, dataDir }) {
+function createApp({ store, dataDir, shieldOptions = {} }) {
   const app = express();
   const version = require("../package.json").version;
   const scannerDataDir = dataDir || path.join(__dirname, "..", "data");
+
+  // The ransomware shield. It is off until the person turns it on, and nothing is watched before.
+  const shield = createShieldService({
+    store,
+    audit: entry => auditEntry(store, entry),
+    onChange: () => refreshHostDevice().catch(error => console.error("Score refresh failed:", error.message)),
+    onAlert: alert => app.emit("shield-alert", alert),
+    ...shieldOptions
+  });
 
   const scanner = createScannerService({
     store,
     dataDir: scannerDataDir,
     audit: entry => auditEntry(store, entry),
-    onThreatsChanged: () => refreshHostDevice()
+    onThreatsChanged: () => refreshHostDevice(),
+    extraThreats: () => shield.penaltyThreats()
   });
 
   app.locals.scanner = scanner;
+  app.locals.shield = shield;
+
+  // Adds the current shield posture check to a list of device checks and rescores them. Only a
+  // device that has real checks gets it; nothing is invented for a device that was never audited.
+  async function withShieldCheck(checks) {
+    await shield.ready;
+    const next = [...checks.filter(check => check.id !== "ransomware-shield"), shield.postureCheck()];
+    const posture = scoreFindings(next);
+
+    return {
+      checks: next,
+      postureScore: posture.score,
+      summary: { passed: posture.passed, attention: posture.attention, unverified: posture.unverified }
+    };
+  }
 
   // Keeps the host device score in sync with posture findings and open threats.
   async function refreshHostDevice() {
@@ -300,6 +327,13 @@ function createApp({ store, dataDir }) {
       };
     }
 
+    if (checks.length) {
+      const withShield = await withShieldCheck(checks);
+      checks = withShield.checks;
+      postureScore = withShield.postureScore;
+      summary = withShield.summary;
+    }
+
     const base = Number.isFinite(postureScore) ? postureScore : 100;
     const score = Math.max(0, Math.min(100, Math.round(base - penalty)));
 
@@ -346,7 +380,8 @@ function createApp({ store, dataDir }) {
     const existing = await store.devices.get(HOST_DEVICE_ID);
     const checkedAt = audit.checkedAt || new Date().toISOString();
     const penalty = await scanner.penalty();
-    const score = Math.max(0, Math.min(100, audit.score - penalty));
+    const posture = await withShieldCheck(audit.checks);
+    const score = Math.max(0, Math.min(100, posture.postureScore - penalty));
 
     const device = {
       id: HOST_DEVICE_ID,
@@ -357,7 +392,7 @@ function createApp({ store, dataDir }) {
       source: "electron",
       role: "host",
       model: audit.model || null,
-      postureScore: audit.score,
+      postureScore: posture.postureScore,
       scanPenalty: penalty,
       score,
       grade: gradeFor(score),
@@ -365,12 +400,8 @@ function createApp({ store, dataDir }) {
       checkedAt,
       lastSeen: checkedAt,
       createdAt: existing ? existing.createdAt : checkedAt,
-      checks: audit.checks,
-      summary: {
-        passed: audit.passed,
-        attention: audit.attention,
-        unverified: audit.unverified
-      }
+      checks: posture.checks,
+      summary: posture.summary
     };
 
     await store.devices.upsert(device);
@@ -379,10 +410,10 @@ function createApp({ store, dataDir }) {
       kind: "device",
       message:
         `Device check on ${device.name}: ${device.score}/100 (${device.grade}) · ` +
-        `${audit.passed} passed · ${audit.attention} need attention · ` +
-        `${audit.unverified} unverified` +
+        `${posture.summary.passed} passed · ${posture.summary.attention} need attention · ` +
+        `${posture.summary.unverified} unverified` +
         `${penalty ? ` · ${penalty} points from open threats` : ""}`,
-      severity: audit.attention > 0 ? "MEDIUM" : null
+      severity: posture.summary.attention > 0 ? "MEDIUM" : null
     });
 
     const devices = (await store.devices.all()).map(publicDoc);
@@ -521,18 +552,22 @@ function createApp({ store, dataDir }) {
       .filter(Boolean)
   );
 
+  const isAllowedOrigin = origin => {
+    const isLocalShell =
+      origin === "capacitor://localhost" ||
+      origin === "ionic://localhost" ||
+      origin === "http://localhost" ||
+      origin === "https://localhost" ||
+      /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(origin);
+
+    return isLocalShell || allowedOrigins.has(origin);
+  };
+
   app.use((req, res, next) => {
     const origin = req.headers.origin;
 
     if (origin) {
-      const isLocalShell =
-        origin === "capacitor://localhost" ||
-        origin === "ionic://localhost" ||
-        origin === "http://localhost" ||
-        origin === "https://localhost" ||
-        /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(origin);
-
-      if (isLocalShell || allowedOrigins.has(origin)) {
+      if (isAllowedOrigin(origin)) {
         res.setHeader("Access-Control-Allow-Origin", origin);
         res.setHeader("Vary", "Origin");
         res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
@@ -601,6 +636,8 @@ function createApp({ store, dataDir }) {
     store,
     audit: entry => auditEntry(store, entry)
   });
+
+  registerShieldRoutes(app, { shield, isAllowedOrigin });
 
   app.get("/api/health", async (_req, res) => {
     const scannerStatus = scanner.status();
@@ -1607,6 +1644,7 @@ async function start(options = {}) {
 
   server.on("close", () => {
     app.locals.scanner?.close();
+    app.locals.shield?.close();
   });
 
   const actualPort = server.address().port;

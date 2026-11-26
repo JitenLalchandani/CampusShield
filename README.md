@@ -354,6 +354,18 @@ The ingest endpoint accepts events from an approved source but does not verify t
 are genuine. Accounts and tokens gate who can call the API, not whether an ingested event is true, so
 treat any event source as trusted input. Serve a deployment beyond localhost over HTTPS.
 
+## Ransomware shield (opt-in)
+
+Off by default. When on, CampusShield watches Documents, Desktop, Pictures, and any folders you add (inside your home folder, at most 10). It raises an alert when at least 25 files in one folder change within 10 seconds and at least 60% show a sign of encryption: an extension never seen in that folder, or a text file whose first 8 KB now looks random (entropy of 7.5 bits per byte or more). The three numbers are shown in the app and can be changed within fixed ranges.
+
+- **Contain** stops the suspect program and/or turns off network connections. The suspect is a best guess from open-file sampling (`lsof` on macOS and Linux; Sysinternals `handle.exe` on Windows only if it is already installed, never downloaded). It is labelled a suspect, not a culprit.
+- Network isolation records what it turned off, restores only that, and restores automatically after 30 minutes (5 to 240) unless you choose Keep isolated. A remote Contain can stop a program but turning the network off always needs approval on the protected computer.
+- Scoring: an open alert costs the critical weight (30) through the existing malware penalty and its 45-point cap. The posture check `ransomware-shield` costs 4 points when the shield is supported but off, and nothing when unsupported or unable to start. `RULES_VERSION` is 2026.12.
+- API: `GET /api/shield`, `PATCH /api/shield/settings`, `GET /api/shield/alerts`, `GET /api/shield/alerts/:id` (issues a 60-second single-use confirmation), and `POST` `contain`, `undo`, `keep-isolated`, `dismiss`. Changes need a signed-in account or the admin token; the viewer token is read-only.
+- Limits: this is a heuristic on file changes, not a kernel driver. It can miss slow encryption, can be wrong about the program, and cannot stop damage already done. Windows and Linux paths are untested on real machines.
+
+Manual check before relying on it: on a spare folder, rename 30 files to `.locked` within a few seconds, confirm the alert, then try Contain with only "Turn off network" and confirm Restore network brings the connection back.
+
 ## Scoring rules
 
 - Start at 100. Deduct 30 (critical), 18 (high), 10 (medium), 4 (low). Info and unverified checks cost 0.

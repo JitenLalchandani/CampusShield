@@ -33,7 +33,8 @@ const KIND_META = {
   ingest: { icon: "ingest", className: "" },
   scan: { icon: "scan", className: "scan" },
   device: { icon: "shield", className: "device" },
-  admin: { icon: "admin", className: "admin" }
+  admin: { icon: "admin", className: "admin" },
+  shield: { icon: "shield", className: "device" }
 };
 
 export function esc(value) {

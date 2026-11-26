@@ -4034,3 +4034,170 @@ body.auth-gate .tabbar {
     display: none;
   }
 }
+
+/* Ransomware shield */
+.shield-card .switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.shield-card .switch-row > span:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.chip[data-tone="ok"] { color: var(--green); border-color: rgba(53, 211, 154, 0.4); }
+.chip[data-tone="warn"] { color: var(--amber); border-color: rgba(255, 202, 101, 0.4); }
+.chip[data-status="open"] { color: var(--red); border-color: rgba(255, 93, 115, 0.45); }
+.chip[data-status="contained"] { color: var(--green); border-color: rgba(53, 211, 154, 0.4); }
+
+.shield-folders,
+.shield-alerts,
+.shield-results,
+.shield-samples {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.shield-folder {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: var(--bg-soft);
+}
+
+.shield-folder code,
+.shield-samples code {
+  color: var(--txt);
+  overflow-wrap: anywhere;
+}
+
+.shield-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--faint);
+  flex: none;
+}
+
+.shield-folder[data-state="live"] .shield-dot { background: var(--green); }
+.shield-folder[data-state="failed"] .shield-dot { background: var(--amber); }
+
+.shield-sub {
+  margin: 18px 0 8px;
+  font-size: 13px;
+}
+
+.shield-none {
+  margin: 14px 0 0;
+}
+
+.shield-details {
+  margin: 10px 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.shield-details summary {
+  cursor: pointer;
+  color: var(--cyan);
+  font-weight: 700;
+}
+
+.shield-alert-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: var(--txt);
+  text-align: left;
+  cursor: pointer;
+}
+
+.shield-alert-row:hover { border-color: var(--line); }
+.shield-alert-row:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+
+.shield-alert-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.shield-alert-main strong { overflow-wrap: anywhere; }
+
+.shield-results li {
+  padding: 8px 12px;
+  border-left: 3px solid var(--line);
+  background: var(--bg-soft);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.shield-results li[data-tone="ok"] { border-left-color: var(--green); }
+.shield-results li[data-tone="warn"] { border-left-color: var(--amber); }
+
+.shield-code {
+  margin: 6px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--bg-soft);
+  color: var(--txt);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.shield-isolated {
+  padding: 12px;
+  border: 1px solid rgba(255, 202, 101, 0.35);
+  border-radius: 12px;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 13.5px;
+}
+
+.shield-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 14px;
+  padding: 12px 16px;
+  border: 1px solid rgba(255, 93, 115, 0.5);
+  border-radius: 12px;
+  background: rgba(255, 93, 115, 0.1);
+  color: var(--txt);
+  font-size: 13.5px;
+}
+
+.shield-banner svg { color: var(--red); flex: none; width: 18px; height: 18px; }
+.shield-banner span { flex: 1; min-width: 0; }
+
+#shieldThreats[hidden] { display: none; }
+
+@media (max-width: 640px) {
+  .shield-alert-row { grid-template-columns: auto 1fr; }
+  .shield-alert-row > .helper,
+  .shield-alert-row > .chip { grid-column: 2; justify-self: start; }
+  .shield-banner { flex-wrap: wrap; }
+}

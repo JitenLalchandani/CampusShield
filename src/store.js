@@ -3,6 +3,9 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 
+// Ransomware shield alerts kept per store; the oldest are pruned beyond this.
+const SHIELD_ALERT_LIMIT = 200;
+
 class DuplicateIdError extends Error {
   constructor(id) {
     super(`Event ID already exists: ${id}`);
@@ -50,6 +53,7 @@ function createJsonStore(dir) {
     devices: [],
     scans: [],
     quarantine: [],
+    shieldAlerts: [],
     settings: {},
     users: [],
     sessions: []
@@ -74,6 +78,8 @@ function createJsonStore(dir) {
           state.devices = Array.isArray(parsed.devices) ? parsed.devices : [];
           state.scans = Array.isArray(parsed.scans) ? parsed.scans : [];
           state.quarantine = Array.isArray(parsed.quarantine) ? parsed.quarantine : [];
+          // Older store files have no shieldAlerts key; a missing key means no alerts yet.
+          state.shieldAlerts = Array.isArray(parsed.shieldAlerts) ? parsed.shieldAlerts : [];
           state.settings =
             parsed.settings && typeof parsed.settings === "object" && !Array.isArray(parsed.settings)
               ? parsed.settings
@@ -267,6 +273,56 @@ function createJsonStore(dir) {
         await load();
         const deleted = state.scans.length;
         state.scans = [];
+        await persist();
+        return deleted;
+      }
+    },
+
+    shieldAlerts: {
+      async all(limit = SHIELD_ALERT_LIMIT) {
+        await load();
+        return state.shieldAlerts
+          .slice()
+          .sort((a, b) => Date.parse(b.startedAt || 0) - Date.parse(a.startedAt || 0))
+          .slice(0, limit)
+          .map(copy);
+      },
+      async get(id) {
+        await load();
+        return copy(state.shieldAlerts.find(alert => alert.id === id) || null);
+      },
+      async upsert(record) {
+        await load();
+        const index = state.shieldAlerts.findIndex(alert => alert.id === record.id);
+
+        if (index === -1) state.shieldAlerts.push(copy(record));
+        else state.shieldAlerts[index] = copy(record);
+
+        await persist();
+        return copy(record);
+      },
+      // Keeps only the newest `max` alerts. Returns how many were removed.
+      async prune(max = SHIELD_ALERT_LIMIT) {
+        await load();
+        if (state.shieldAlerts.length <= max) return 0;
+
+        const keep = new Set(
+          state.shieldAlerts
+            .slice()
+            .sort((a, b) => Date.parse(b.startedAt || 0) - Date.parse(a.startedAt || 0))
+            .slice(0, max)
+            .map(alert => alert.id)
+        );
+        const before = state.shieldAlerts.length;
+
+        state.shieldAlerts = state.shieldAlerts.filter(alert => keep.has(alert.id));
+        await persist();
+        return before - state.shieldAlerts.length;
+      },
+      async clear() {
+        await load();
+        const deleted = state.shieldAlerts.length;
+        state.shieldAlerts = [];
         await persist();
         return deleted;
       }
@@ -477,6 +533,7 @@ function createMongoStore(uri) {
   let devices;
   let scans;
   let quarantine;
+  let shieldAlerts;
   let settings;
   let users;
   let sessions;
@@ -500,6 +557,7 @@ function createMongoStore(uri) {
       devices = db.collection("devices");
       scans = db.collection("scans");
       quarantine = db.collection("quarantine");
+      shieldAlerts = db.collection("shieldAlerts");
       settings = db.collection("settings");
       users = db.collection("users");
       sessions = db.collection("sessions");
@@ -514,6 +572,9 @@ function createMongoStore(uri) {
         scans.createIndex({ startedAt: -1 }),
         quarantine.createIndex({ id: 1 }, { unique: true }),
         quarantine.createIndex({ quarantinedAt: -1 }),
+        shieldAlerts.createIndex({ id: 1 }, { unique: true }),
+        shieldAlerts.createIndex({ status: 1 }),
+        shieldAlerts.createIndex({ startedAt: -1 }),
         users.createIndex({ id: 1 }, { unique: true }),
         users.createIndex({ email: 1 }, { unique: true }),
         users.createIndex({ usernameLower: 1 }, { unique: true, sparse: true }),
@@ -631,6 +692,36 @@ function createMongoStore(uri) {
       },
       async clear() {
         const result = await scans.deleteMany({});
+        return result.deletedCount;
+      }
+    },
+
+    shieldAlerts: {
+      async all(limit = SHIELD_ALERT_LIMIT) {
+        return shieldAlerts.find({}, { projection: { _id: 0 } }).sort({ startedAt: -1 }).limit(limit).toArray();
+      },
+      async get(id) {
+        return shieldAlerts.findOne({ id }, { projection: { _id: 0 } });
+      },
+      async upsert(record) {
+        await shieldAlerts.updateOne({ id: record.id }, { $set: record }, { upsert: true });
+        return record;
+      },
+      // Keeps only the newest `max` alerts. Returns how many were removed.
+      async prune(max = SHIELD_ALERT_LIMIT) {
+        const stale = await shieldAlerts
+          .find({}, { projection: { _id: 0, id: 1 } })
+          .sort({ startedAt: -1 })
+          .skip(max)
+          .toArray();
+
+        if (!stale.length) return 0;
+
+        const result = await shieldAlerts.deleteMany({ id: { $in: stale.map(alert => alert.id) } });
+        return result.deletedCount;
+      },
+      async clear() {
+        const result = await shieldAlerts.deleteMany({});
         return result.deletedCount;
       }
     },

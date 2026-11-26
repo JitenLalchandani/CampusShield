@@ -2,6 +2,7 @@ import { api, clearSessionToken, getApiBase, getSettings, isDesktopShell, isNati
 import { fetchAuthStatus, renderAuthGate } from "./auth.js";
 import { closeEvent, openEvent } from "./drawer.js";
 import { icon, toast } from "./ui.js";
+import { refreshShieldBanner } from "./views/shield.js";
 import * as assistantView from "./views/assistant.js";
 import * as protection from "./views/protection.js";
 import * as threats from "./views/threats.js";
@@ -235,6 +236,11 @@ function renderBanner() {
 function startAutoRefresh() {
   if (autoRefreshStarted) return;
   autoRefreshStarted = true;
+
+  refreshShieldBanner();
+  window.setInterval(() => {
+    if (signedUser && document.visibilityState === "visible") refreshShieldBanner();
+  }, 15000);
 
   window.setInterval(() => {
     const preferences = getSettings();
