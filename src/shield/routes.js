@@ -13,7 +13,7 @@ function isLoopback(address) {
   return /^(::1$|127\.|::ffff:127\.)/.test(String(address || ""));
 }
 
-function registerShieldRoutes(app, { shield, isAllowedOrigin }) {
+function createGuards(isAllowedOrigin) {
   // Who is calling, and whether they may change things. Returns null when they may not.
   function identify(req) {
     const address = req.socket?.remoteAddress || "unknown";
@@ -66,6 +66,12 @@ function registerShieldRoutes(app, { shield, isAllowedOrigin }) {
       res.status(code).json({ error: code === 500 ? "Internal server error" : error.message });
     }
   };
+
+  return { identify, requireMutation, handle };
+}
+
+function registerShieldRoutes(app, { shield, isAllowedOrigin }) {
+  const { identify, requireMutation, handle } = createGuards(isAllowedOrigin);
 
   const alertId = req => {
     const id = String(req.params.id || "");
@@ -155,4 +161,4 @@ function registerShieldRoutes(app, { shield, isAllowedOrigin }) {
   );
 }
 
-module.exports = { registerShieldRoutes, isLoopback };
+module.exports = { registerShieldRoutes, createGuards, isLoopback };

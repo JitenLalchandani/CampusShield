@@ -4201,3 +4201,27 @@ body.auth-gate .tabbar {
   .shield-alert-row > .chip { grid-column: 2; justify-self: start; }
   .shield-banner { flex-wrap: wrap; }
 }
+
+/* USB auto-scan (reuses the shield card styles) */
+.usb-drive {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.usb-drive code { overflow-wrap: anywhere; }
+
+.usb-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.chip[data-tone="bad"] { color: var(--red); border-color: rgba(255, 93, 115, 0.45); }
+
+@media (max-width: 640px) {
+  .shield-folder:has(.usb-actions) { flex-wrap: wrap; }
+  .usb-actions { justify-content: flex-start; width: 100%; }
+}

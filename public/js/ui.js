@@ -34,7 +34,8 @@ const KIND_META = {
   scan: { icon: "scan", className: "scan" },
   device: { icon: "shield", className: "device" },
   admin: { icon: "admin", className: "admin" },
-  shield: { icon: "shield", className: "device" }
+  shield: { icon: "shield", className: "device" },
+  usb: { icon: "shield", className: "device" }
 };
 
 export function esc(value) {

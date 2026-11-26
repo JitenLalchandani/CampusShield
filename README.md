@@ -360,11 +360,21 @@ Off by default. When on, CampusShield watches Documents, Desktop, Pictures, and 
 
 - **Contain** stops the suspect program and/or turns off network connections. The suspect is a best guess from open-file sampling (`lsof` on macOS and Linux; Sysinternals `handle.exe` on Windows only if it is already installed, never downloaded). It is labelled a suspect, not a culprit.
 - Network isolation records what it turned off, restores only that, and restores automatically after 30 minutes (5 to 240) unless you choose Keep isolated. A remote Contain can stop a program but turning the network off always needs approval on the protected computer.
-- Scoring: an open alert costs the critical weight (30) through the existing malware penalty and its 45-point cap. The posture check `ransomware-shield` costs 4 points when the shield is supported but off, and nothing when unsupported or unable to start. `RULES_VERSION` is 2026.12.
+- Scoring: an open alert costs the critical weight (30) through the existing malware penalty and its 45-point cap. The posture check `ransomware-shield` costs 4 points when the shield is supported but off, and nothing when unsupported or unable to start. `RULES_VERSION` was 2026.12 when this shipped and is now 2026.13 (see USB auto-scan).
 - API: `GET /api/shield`, `PATCH /api/shield/settings`, `GET /api/shield/alerts`, `GET /api/shield/alerts/:id` (issues a 60-second single-use confirmation), and `POST` `contain`, `undo`, `keep-isolated`, `dismiss`. Changes need a signed-in account or the admin token; the viewer token is read-only.
 - Limits: this is a heuristic on file changes, not a kernel driver. It can miss slow encryption, can be wrong about the program, and cannot stop damage already done. Windows and Linux paths are untested on real machines.
 
 Manual check before relying on it: on a spare folder, rename 30 files to `.locked` within a few seconds, confirm the alert, then try Contain with only "Turn off network" and confirm Restore network brings the connection back.
+
+## USB auto-scan (opt-in)
+
+Off by default. When on, CampusShield lists removable drives every few seconds. A drive that appears while it is watching gets two checks: the top of the drive is looked at for autorun tricks (an `autorun.inf` that starts a program, `report.pdf.exe` style double extensions, a `.lnk` shortcut named like the folder beside it), and the normal file scanner runs on the whole drive. Drives already plugged in when watching starts are listed and only scanned when you press Scan now.
+
+- Read-only: nothing on the drive is opened, run, or changed. Quarantine moves flagged files off the drive only when you confirm, and uses the existing quarantine so you can restore them.
+- Records: every drive gets an event with exactly what was checked (files read, skipped, unreadable, stopped early) and a status of clean, needs attention, incomplete, removed, or dismissed. A failed, cancelled, or unreadable check is "incomplete", never "clean".
+- Scoring: file-scanner threats are scored by the scanner as before. Autorun findings of medium or higher add one threat per open drive event through the same weights and 45-point cap. The posture check `usb-autoscan` costs 4 points when supported but off. `RULES_VERSION` is 2026.13.
+- API: `GET /api/usb`, `PATCH /api/usb/settings`, `GET /api/usb/events[/:id]`, `POST /api/usb/drives/:id/scan`, `POST /api/usb/drives/:id/ignore`, `POST /api/usb/events/:id/dismiss`, `POST /api/usb/events/:id/quarantine-all` (needs a 60-second single-use confirmation). Changes need a signed-in account or the admin token.
+- Limits: drives plugged in and out between polls can be missed; only the top of the drive is checked for autorun tricks; Windows drive detection has not been verified on a real machine.
 
 ## Scoring rules
 
