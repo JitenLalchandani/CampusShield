@@ -42,6 +42,8 @@ const { createShieldService } = require("./shield/service");
 const { registerShieldRoutes } = require("./shield/routes");
 const { createUsbService } = require("./usb/service");
 const { registerUsbRoutes } = require("./usb/routes");
+const { createWebService } = require("./web/service");
+const { registerWebRoutes } = require("./web/routes");
 
 function platformLabel(platform) {
   return PLATFORM_LABELS[platform] || platform || "Unknown";
@@ -228,7 +230,7 @@ function protectionSummary(devices) {
   };
 }
 
-function createApp({ store, dataDir, shieldOptions = {}, usbOptions = {} }) {
+function createApp({ store, dataDir, shieldOptions = {}, usbOptions = {}, webOptions = {} }) {
   const app = express();
   const version = require("../package.json").version;
   const scannerDataDir = dataDir || path.join(__dirname, "..", "data");
@@ -266,14 +268,25 @@ function createApp({ store, dataDir, shieldOptions = {}, usbOptions = {} }) {
   app.locals.shield = shield;
   app.locals.usb = usb;
 
+  // Web & phishing protection checks links you paste. It never opens a page or watches browsing.
+  const web = createWebService({
+    store,
+    audit: entry => auditEntry(store, entry),
+    onChange: () => refreshHostDevice().catch(error => console.error("Score refresh failed:", error.message)),
+    ...webOptions
+  });
+
+  app.locals.web = web;
+
   // Adds the current shield posture check to a list of device checks and rescores them. Only a
   // device that has real checks gets it; nothing is invented for a device that was never audited.
   async function withShieldCheck(checks) {
-    await Promise.all([shield.ready, usb.ready]);
+    await Promise.all([shield.ready, usb.ready, web.ready]);
     const next = [
-      ...checks.filter(check => check.id !== "ransomware-shield" && check.id !== "usb-autoscan"),
+      ...checks.filter(check => check.id !== "ransomware-shield" && check.id !== "usb-autoscan" && check.id !== "web-protection"),
       shield.postureCheck(),
-      usb.postureCheck()
+      usb.postureCheck(),
+      web.postureCheck()
     ];
     const posture = scoreFindings(next);
 
@@ -658,6 +671,7 @@ function createApp({ store, dataDir, shieldOptions = {}, usbOptions = {} }) {
 
   registerShieldRoutes(app, { shield, isAllowedOrigin });
   registerUsbRoutes(app, { usb, isAllowedOrigin });
+  registerWebRoutes(app, { web, isAllowedOrigin });
 
   app.get("/api/health", async (_req, res) => {
     const scannerStatus = scanner.status();
@@ -1666,6 +1680,7 @@ async function start(options = {}) {
     app.locals.scanner?.close();
     app.locals.shield?.close();
     app.locals.usb?.close();
+    app.locals.web?.close();
   });
 
   const actualPort = server.address().port;
