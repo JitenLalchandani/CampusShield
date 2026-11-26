@@ -40,6 +40,8 @@ const HOST_DEVICE_ID = "local-host";
 const { auditHost, gradeFor, scoreFindings, RULES_VERSION } = require("./deviceAudit");
 const { createShieldService } = require("./shield/service");
 const { registerShieldRoutes } = require("./shield/routes");
+const { createUsbService } = require("./usb/service");
+const { registerUsbRoutes } = require("./usb/routes");
 
 function platformLabel(platform) {
   return PLATFORM_LABELS[platform] || platform || "Unknown";
@@ -226,7 +228,7 @@ function protectionSummary(devices) {
   };
 }
 
-function createApp({ store, dataDir, shieldOptions = {} }) {
+function createApp({ store, dataDir, shieldOptions = {}, usbOptions = {} }) {
   const app = express();
   const version = require("../package.json").version;
   const scannerDataDir = dataDir || path.join(__dirname, "..", "data");
@@ -240,22 +242,39 @@ function createApp({ store, dataDir, shieldOptions = {} }) {
     ...shieldOptions
   });
 
+  let usb = null;
+
   const scanner = createScannerService({
     store,
     dataDir: scannerDataDir,
     audit: entry => auditEntry(store, entry),
     onThreatsChanged: () => refreshHostDevice(),
-    extraThreats: () => shield.penaltyThreats()
+    extraThreats: async () => [...(await shield.penaltyThreats()), ...(usb ? await usb.penaltyThreats() : [])]
+  });
+
+  // USB auto-scan reuses the file scanner and its quarantine. It is off until the person turns it on.
+  usb = createUsbService({
+    store,
+    scanner,
+    audit: entry => auditEntry(store, entry),
+    onChange: () => refreshHostDevice().catch(error => console.error("Score refresh failed:", error.message)),
+    onEvent: event => app.emit("usb-event", event),
+    ...usbOptions
   });
 
   app.locals.scanner = scanner;
   app.locals.shield = shield;
+  app.locals.usb = usb;
 
   // Adds the current shield posture check to a list of device checks and rescores them. Only a
   // device that has real checks gets it; nothing is invented for a device that was never audited.
   async function withShieldCheck(checks) {
-    await shield.ready;
-    const next = [...checks.filter(check => check.id !== "ransomware-shield"), shield.postureCheck()];
+    await Promise.all([shield.ready, usb.ready]);
+    const next = [
+      ...checks.filter(check => check.id !== "ransomware-shield" && check.id !== "usb-autoscan"),
+      shield.postureCheck(),
+      usb.postureCheck()
+    ];
     const posture = scoreFindings(next);
 
     return {
@@ -638,6 +657,7 @@ function createApp({ store, dataDir, shieldOptions = {} }) {
   });
 
   registerShieldRoutes(app, { shield, isAllowedOrigin });
+  registerUsbRoutes(app, { usb, isAllowedOrigin });
 
   app.get("/api/health", async (_req, res) => {
     const scannerStatus = scanner.status();
@@ -1645,6 +1665,7 @@ async function start(options = {}) {
   server.on("close", () => {
     app.locals.scanner?.close();
     app.locals.shield?.close();
+    app.locals.usb?.close();
   });
 
   const actualPort = server.address().port;

@@ -106,3 +106,16 @@ test("dismiss closes the alert and the score no longer counts it", () =>
     assert.equal(done.json.alert.status, "dismissed");
     assert.equal((await call("POST", "/api/shield/alerts/api-1/dismiss", { ignoreHours: 500 })).status, 400);
   }));
+
+test("GET /api/usb reports an off USB auto-scan and rejects bad settings and foreign origins", () =>
+  withApp(async ({ call }) => {
+    const status = await call("GET", "/api/usb");
+    assert.equal(status.status, 200);
+    assert.equal(status.json.enabled, false);
+
+    assert.equal((await call("PATCH", "/api/usb/settings", { enabled: "yes" })).status, 400);
+    assert.equal((await call("PATCH", "/api/usb/settings", { autoScan: false }, { Origin: "https://evil.example" })).status, 403);
+    assert.equal((await call("GET", "/api/usb/events?status=bogus")).status, 400);
+    assert.equal((await call("GET", "/api/usb/events/nope")).status, 404);
+    assert.equal((await call("POST", "/api/usb/events/nope/quarantine-all", { confirm: true })).status, 403);
+  }));

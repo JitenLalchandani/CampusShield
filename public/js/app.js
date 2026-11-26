@@ -3,6 +3,7 @@ import { fetchAuthStatus, renderAuthGate } from "./auth.js";
 import { closeEvent, openEvent } from "./drawer.js";
 import { icon, toast } from "./ui.js";
 import { refreshShieldBanner } from "./views/shield.js";
+import { refreshUsbBanner } from "./views/usb.js";
 import * as assistantView from "./views/assistant.js";
 import * as protection from "./views/protection.js";
 import * as threats from "./views/threats.js";
@@ -237,9 +238,9 @@ function startAutoRefresh() {
   if (autoRefreshStarted) return;
   autoRefreshStarted = true;
 
-  refreshShieldBanner();
+  refreshShieldBanner().then(refreshUsbBanner);
   window.setInterval(() => {
-    if (signedUser && document.visibilityState === "visible") refreshShieldBanner();
+    if (signedUser && document.visibilityState === "visible") refreshShieldBanner().then(refreshUsbBanner);
   }, 15000);
 
   window.setInterval(() => {

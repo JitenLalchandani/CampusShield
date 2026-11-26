@@ -5,6 +5,7 @@ const path = require("node:path");
 
 // Ransomware shield alerts kept per store; the oldest are pruned beyond this.
 const SHIELD_ALERT_LIMIT = 200;
+const USB_EVENT_LIMIT = 200;
 
 class DuplicateIdError extends Error {
   constructor(id) {
@@ -54,6 +55,7 @@ function createJsonStore(dir) {
     scans: [],
     quarantine: [],
     shieldAlerts: [],
+    usbEvents: [],
     settings: {},
     users: [],
     sessions: []
@@ -80,6 +82,7 @@ function createJsonStore(dir) {
           state.quarantine = Array.isArray(parsed.quarantine) ? parsed.quarantine : [];
           // Older store files have no shieldAlerts key; a missing key means no alerts yet.
           state.shieldAlerts = Array.isArray(parsed.shieldAlerts) ? parsed.shieldAlerts : [];
+          state.usbEvents = Array.isArray(parsed.usbEvents) ? parsed.usbEvents : [];
           state.settings =
             parsed.settings && typeof parsed.settings === "object" && !Array.isArray(parsed.settings)
               ? parsed.settings
@@ -328,6 +331,56 @@ function createJsonStore(dir) {
       }
     },
 
+    usbEvents: {
+      async all(limit = USB_EVENT_LIMIT) {
+        await load();
+        return state.usbEvents
+          .slice()
+          .sort((a, b) => Date.parse(b.startedAt || 0) - Date.parse(a.startedAt || 0))
+          .slice(0, limit)
+          .map(copy);
+      },
+      async get(id) {
+        await load();
+        return copy(state.usbEvents.find(event => event.id === id) || null);
+      },
+      async upsert(record) {
+        await load();
+        const index = state.usbEvents.findIndex(event => event.id === record.id);
+
+        if (index === -1) state.usbEvents.push(copy(record));
+        else state.usbEvents[index] = copy(record);
+
+        await persist();
+        return copy(record);
+      },
+      // Keeps only the newest `max` alerts. Returns how many were removed.
+      async prune(max = USB_EVENT_LIMIT) {
+        await load();
+        if (state.usbEvents.length <= max) return 0;
+
+        const keep = new Set(
+          state.usbEvents
+            .slice()
+            .sort((a, b) => Date.parse(b.startedAt || 0) - Date.parse(a.startedAt || 0))
+            .slice(0, max)
+            .map(event => event.id)
+        );
+        const before = state.usbEvents.length;
+
+        state.usbEvents = state.usbEvents.filter(event => keep.has(event.id));
+        await persist();
+        return before - state.usbEvents.length;
+      },
+      async clear() {
+        await load();
+        const deleted = state.usbEvents.length;
+        state.usbEvents = [];
+        await persist();
+        return deleted;
+      }
+    },
+
     quarantine: {
       async all() {
         await load();
@@ -534,6 +587,7 @@ function createMongoStore(uri) {
   let scans;
   let quarantine;
   let shieldAlerts;
+  let usbEvents;
   let settings;
   let users;
   let sessions;
@@ -558,6 +612,7 @@ function createMongoStore(uri) {
       scans = db.collection("scans");
       quarantine = db.collection("quarantine");
       shieldAlerts = db.collection("shieldAlerts");
+      usbEvents = db.collection("usbEvents");
       settings = db.collection("settings");
       users = db.collection("users");
       sessions = db.collection("sessions");
@@ -575,6 +630,9 @@ function createMongoStore(uri) {
         shieldAlerts.createIndex({ id: 1 }, { unique: true }),
         shieldAlerts.createIndex({ status: 1 }),
         shieldAlerts.createIndex({ startedAt: -1 }),
+        usbEvents.createIndex({ id: 1 }, { unique: true }),
+        usbEvents.createIndex({ status: 1 }),
+        usbEvents.createIndex({ startedAt: -1 }),
         users.createIndex({ id: 1 }, { unique: true }),
         users.createIndex({ email: 1 }, { unique: true }),
         users.createIndex({ usernameLower: 1 }, { unique: true, sparse: true }),
@@ -722,6 +780,36 @@ function createMongoStore(uri) {
       },
       async clear() {
         const result = await shieldAlerts.deleteMany({});
+        return result.deletedCount;
+      }
+    },
+
+    usbEvents: {
+      async all(limit = USB_EVENT_LIMIT) {
+        return usbEvents.find({}, { projection: { _id: 0 } }).sort({ startedAt: -1 }).limit(limit).toArray();
+      },
+      async get(id) {
+        return usbEvents.findOne({ id }, { projection: { _id: 0 } });
+      },
+      async upsert(record) {
+        await usbEvents.updateOne({ id: record.id }, { $set: record }, { upsert: true });
+        return record;
+      },
+      // Keeps only the newest `max` alerts. Returns how many were removed.
+      async prune(max = USB_EVENT_LIMIT) {
+        const stale = await usbEvents
+          .find({}, { projection: { _id: 0, id: 1 } })
+          .sort({ startedAt: -1 })
+          .skip(max)
+          .toArray();
+
+        if (!stale.length) return 0;
+
+        const result = await usbEvents.deleteMany({ id: { $in: stale.map(event => event.id) } });
+        return result.deletedCount;
+      },
+      async clear() {
+        const result = await usbEvents.deleteMany({});
         return result.deletedCount;
       }
     },
