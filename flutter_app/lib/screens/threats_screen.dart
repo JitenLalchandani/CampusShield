@@ -64,11 +64,7 @@ class _ThreatsScreenState extends State<ThreatsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            action == 'Contain'
-                ? '${event.type} marked contained. This records a decision only.'
-                : '${event.type} marked $action.',
-          ),
+          content: Text('${event.type} marked $action. This records a review decision only.'),
         ),
       );
       await _load();
@@ -147,7 +143,6 @@ class _ThreatsScreenState extends State<ThreatsScreen> {
                         DropdownMenuItem(value: 'all', child: Text('All statuses')),
                         DropdownMenuItem(value: 'Open', child: Text('Open')),
                         DropdownMenuItem(value: 'Under review', child: Text('Under review')),
-                        DropdownMenuItem(value: 'Contained (demo)', child: Text('Contained')),
                       ],
                       onChanged: (value) {
                         setState(() => _status = value ?? 'all');
@@ -279,6 +274,10 @@ class _EventTile extends StatelessWidget {
             const SizedBox(height: 8),
             Text('Rule: ${event.rule}', style: const TextStyle(color: CsColors.faint, fontSize: 11.5)),
           ],
+          if (event.originLabel.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text('From: ${event.originLabel}', style: const TextStyle(color: CsColors.faint, fontSize: 11.5)),
+          ],
           const SizedBox(height: 12),
           Wrap(
             spacing: 8,
@@ -287,10 +286,6 @@ class _EventTile extends StatelessWidget {
               OutlinedButton(
                 onPressed: () => onAction('Investigate'),
                 child: const Text('Investigate'),
-              ),
-              OutlinedButton(
-                onPressed: () => onAction('Contain'),
-                child: const Text('Contain'),
               ),
               OutlinedButton(
                 onPressed: () => onAction('Reopen'),

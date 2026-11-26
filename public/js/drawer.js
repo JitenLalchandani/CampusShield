@@ -120,9 +120,6 @@ function renderDetail(data) {
   if (event.status !== "Under review") {
     actions.push(["Investigate", "Investigate", "btn ghost small"]);
   }
-  if (event.status !== "Contained (demo)") {
-    actions.push(["Contain", "Record containment", "btn ghost small"]);
-  }
   if (event.status !== "Open") {
     actions.push(["Reopen", "Reopen", "btn subtle small"]);
   }
@@ -144,6 +141,9 @@ function renderDetail(data) {
       <section class="drawer-section">
         <h3>Detail</h3>
         <p class="detail-copy">${esc(event.detail || "No detail supplied.")}</p>
+        ${event.legacyDemoAction
+          ? `<p class="tiny">An earlier version recorded a demo containment here. It never changed this device, so the event is shown as Open.</p>`
+          : ""}
       </section>
 
       <section class="drawer-section">
@@ -159,6 +159,7 @@ function renderDetail(data) {
       <dl class="meta-grid">
         <div><dt>Campus group</dt><dd>${esc(event.group || "—")}</dd></div>
         <div><dt>Source</dt><dd>${esc(event.source || "—")}</dd></div>
+        <div><dt>Where it came from</dt><dd>${esc(event.originLabel || "Source not recorded")}</dd></div>
         <div><dt>Signal count</dt><dd>${esc(event.count ?? "—")}</dd></div>
         <div><dt>Received</dt><dd>${esc(relativeTime(event.time))} · ${esc(dateTime(event.time))}</dd></div>
       </dl>

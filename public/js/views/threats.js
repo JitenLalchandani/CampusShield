@@ -10,6 +10,7 @@ import {
   statusClass,
   toast
 } from "../ui.js";
+import { openShieldAlert } from "./shield.js";
 
 export const meta = {
   eyebrow: "Triage",
@@ -60,7 +61,6 @@ export async function render(root) {
           ${option("all", "All statuses", filters.status)}
           ${option("Open", "Open", filters.status)}
           ${option("Under review", "Under review", filters.status)}
-          ${option("Contained (demo)", "Contained", filters.status)}
         </select>
       </label>
       <label class="field">
@@ -78,6 +78,8 @@ export async function render(root) {
         </select>
       </label>
     </div>
+
+    <section class="card" id="shieldThreats" hidden></section>
 
     <section class="card">
       <div class="card-head">
@@ -98,7 +100,36 @@ export async function render(root) {
   `;
 
   bind(root);
+  loadShieldAlerts(root);
   await load(true);
+}
+
+async function loadShieldAlerts(root) {
+  const card = root.querySelector("#shieldThreats");
+
+  try {
+    const { alerts } = await api("/api/shield/alerts?limit=20");
+    if (!alerts?.length) return;
+
+    card.hidden = false;
+    card.innerHTML = `
+      <div class="card-head"><div><h2>Ransomware shield</h2><p>${alerts.length} alert${alerts.length === 1 ? "" : "s"} from the folder watcher</p></div></div>
+      <ul class="shield-alerts">${alerts
+        .map(
+          alert => `<li><button class="shield-alert-row" type="button" data-shield-alert="${esc(alert.id)}">
+            <span class="sev ${alert.severity === "critical" || alert.severity === "high" ? "high" : "medium"}">${esc(alert.severity)}</span>
+            <span class="shield-alert-main"><strong>${esc(alert.folder)}</strong><span class="helper">${num(alert.evidence?.filesTouched)} files changed in ${num(alert.evidence?.windowSec)}s</span></span>
+            <span class="chip">${esc(alert.status)}</span>
+          </button></li>`
+        )
+        .join("")}</ul>`;
+
+    card.querySelectorAll("[data-shield-alert]").forEach(button => {
+      button.addEventListener("click", () => openShieldAlert(button.dataset.shieldAlert, () => loadShieldAlerts(root)));
+    });
+  } catch {
+    card.hidden = true;
+  }
 }
 
 function bind(root) {

@@ -27,7 +27,9 @@ function feedHost(url) {
   }
 }
 
-function createScannerService({ store, dataDir, audit, onThreatsChanged }) {
+// `extraThreats` lets another module (the ransomware shield) add open threats to the same penalty,
+// so the weights and the cap stay in one place. Each item needs a filePath and a severity.
+function createScannerService({ store, dataDir, audit, onThreatsChanged, extraThreats }) {
   const signatures = loadSignatures();
   const quarantine = createQuarantine(dataDir);
   const remoteFeed = {
@@ -201,7 +203,8 @@ function createScannerService({ store, dataDir, audit, onThreatsChanged }) {
   }
 
   async function penalty() {
-    const open = (await allThreats()).filter(threat => threat.status === "detected");
+    const extra = typeof extraThreats === "function" ? await extraThreats() : [];
+    const open = [...(await allThreats()).filter(threat => threat.status === "detected"), ...extra];
     const byPath = new Map();
 
     for (const threat of open) {

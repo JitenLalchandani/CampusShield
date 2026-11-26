@@ -581,6 +581,7 @@ class EventItem {
     required this.status,
     required this.rule,
     required this.recommendation,
+    this.originLabel = '',
   });
 
   final String id;
@@ -594,6 +595,7 @@ class EventItem {
   final String status;
   final String rule;
   final String recommendation;
+  final String originLabel;
 
   factory EventItem.fromJson(Map<String, dynamic> json) => EventItem(
         id: _text(json['id']),
@@ -607,6 +609,7 @@ class EventItem {
         status: _text(json['status'], 'Open'),
         rule: _text(json['rule']),
         recommendation: _text(json['recommendation']),
+        originLabel: _text(json['originLabel']),
       );
 }
 
@@ -629,7 +632,6 @@ class OverviewSummary {
     required this.eventsTotal,
     required this.highPriority,
     required this.underReview,
-    required this.contained,
     required this.open,
     required this.auditTotal,
     required this.daily,
@@ -644,7 +646,6 @@ class OverviewSummary {
   final int eventsTotal;
   final int highPriority;
   final int underReview;
-  final int contained;
   final int open;
   final int auditTotal;
   final List<DailyPoint> daily;
@@ -659,7 +660,6 @@ class OverviewSummary {
     eventsTotal: 0,
     highPriority: 0,
     underReview: 0,
-    contained: 0,
     open: 0,
     auditTotal: 0,
     daily: [],
@@ -677,7 +677,6 @@ class OverviewSummary {
       eventsTotal: _toInt(json['eventsTotal']),
       highPriority: _toInt(json['highPriority']),
       underReview: _toInt(json['underReview']),
-      contained: _toInt(json['contained']),
       open: _toInt(json['open']),
       auditTotal: _toInt(json['auditTotal']),
       daily: _list(json['daily'])

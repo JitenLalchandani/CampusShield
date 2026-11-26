@@ -12,8 +12,10 @@ import {
   icon,
   num,
   relativeTime,
+  scanProof,
   toast
 } from "../ui.js";
+import { bindShieldCard, renderShieldCard } from "./shield.js";
 
 export const meta = {
   eyebrow: "Protection",
@@ -60,9 +62,11 @@ export async function render(root) {
     </div>
   `;
 
-  const [protection, summary] = await Promise.all([
+  const [protection, summary, shieldStatus, shieldAlerts] = await Promise.all([
     api("/api/protection"),
-    api("/api/summary")
+    api("/api/summary"),
+    api("/api/shield").catch(() => null),
+    api("/api/shield/alerts?limit=10").then(data => data.alerts || []).catch(() => [])
   ]);
 
   const devices = Array.isArray(protection.devices) ? protection.devices : [];
@@ -247,12 +251,14 @@ export async function render(root) {
           })}</div>`}
     </section>
 
+    ${renderShieldCard(shieldStatus, shieldAlerts)}
+
     <section class="card protect-section scan-section" id="scanSection">
       <div class="card-head">
         <div>
           <h2>Malware scan</h2>
           <p>${lastScan
-            ? `Last ${lastScan.scope} scan ${esc(relativeTime(lastScan.finishedAt || lastScan.startedAt))} · ${num(lastScan.filesScanned)} files · ${num(lastScanOpen)} open threat${lastScanOpen === 1 ? "" : "s"}`
+            ? `Last ${esc(lastScan.scope)} scan ${esc(relativeTime(lastScan.finishedAt || lastScan.startedAt))} · ${esc(scanProof(lastScan))} · ${num(lastScanOpen)} open threat${lastScanOpen === 1 ? "" : "s"}`
             : "Signature and heuristic checks on files on this computer"}${scheduleLine ? ` ${scheduleLine}` : ""}</p>
         </div>
         <span class="chip">${icon("scan")} ${num(scanner.signatureCount || 0)} signature${scanner.signatureCount === 1 ? "" : "s"}</span>
@@ -454,6 +460,7 @@ export async function render(root) {
   `;
 
   bind(root);
+  bindShieldCard(root, () => render(root));
 
   if (activeScan) pollScan(root, activeScan.id);
 }
@@ -812,11 +819,9 @@ async function startScan(root, scope, target = null) {
 
   const progress = root.querySelector("#scanProgress");
   const progressText = root.querySelector("#scanProgressText");
-  const fill = root.querySelector("#scanBarFill");
 
   if (progress) progress.hidden = false;
   if (progressText) progressText.textContent = "Collecting folders and starting the scan…";
-  if (fill) fill.style.width = "4%";
 
   try {
     const result = await api("/api/scans", {
@@ -868,7 +873,6 @@ function pollScan(root, scanId) {
         const count = Number(scan.filesScanned || 0);
         const found = Number(scan.threatCount || 0);
         const text = root.querySelector("#scanProgressText");
-        const fill = root.querySelector("#scanBarFill");
 
         if (text) {
           text.textContent =
@@ -876,7 +880,8 @@ function pollScan(root, scanId) {
             `${found ? ` · ${num(found)} threat${found === 1 ? "" : "s"}` : ""}` +
             `${scan.currentDirectory ? ` · ${scan.currentDirectory}` : ""}`;
         }
-        if (fill) fill.style.width = `${Math.min(92, 6 + Math.log10(count + 1) * 24)}%`;
+        // The total file count is unknown until the walk ends, so there is no honest percentage.
+        // The bar only signals activity; the numbers above are the measurement.
         return;
       }
 

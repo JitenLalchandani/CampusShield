@@ -1,5 +1,5 @@
 import { api, getAiConfig, isAiConfigured } from "../api.js";
-import { esc, icon, iconForKind, num, relativeTime, sevClass, toast } from "../ui.js";
+import { esc, icon, iconForKind, num, relativeTime, scanProof, sevClass, toast } from "../ui.js";
 
 export const meta = {
   eyebrow: "Security overview",
@@ -966,7 +966,13 @@ function scanBlock(scan) {
       ${runningScan ? `<div class="scan-progress" aria-hidden="true"></div>` : ""}
       <p>${runningScan
         ? "Reading files against local signatures and heuristics. The count updates as the scan runs."
-        : `${num(scan.filesScanned)} files read · ${num(detections)} detection${detections === 1 ? "" : "s"} · ${num(scan.skipped || 0)} skipped${detections ? ". Detections are listed below and in the threat queue." : "."}`}</p>
+        : `${esc(scanProof(scan))} · ${scan.status !== "complete"
+          ? `scan ${esc(scan.status)}, so these results are partial.`
+          : detections
+            ? `${num(detections)} detection${detections === 1 ? "" : "s"}. Detections are listed below and in the threat queue.`
+            : scan.truncated
+              ? "nothing suspicious in the files read before it stopped."
+              : "nothing suspicious found."}`}</p>
       ${!runningScan && Array.isArray(scan.errors) && scan.errors.length
         ? `<p class="tiny">${num(scan.errors.length)} location(s) could not be read (folder permission), so their files were skipped. Grant the app access and scan again to include them.</p>`
         : ""}

@@ -33,7 +33,8 @@ const KIND_META = {
   ingest: { icon: "ingest", className: "" },
   scan: { icon: "scan", className: "scan" },
   device: { icon: "shield", className: "device" },
-  admin: { icon: "admin", className: "admin" }
+  admin: { icon: "admin", className: "admin" },
+  shield: { icon: "shield", className: "device" }
 };
 
 export function esc(value) {
@@ -57,6 +58,40 @@ export function iconForKind(kind) {
 
 export function num(value) {
   return new Intl.NumberFormat().format(Number(value) || 0);
+}
+
+function byteSize(value) {
+  const bytes = Number(value) || 0;
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let size = bytes / 1024;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  return `${size.toFixed(size >= 10 ? 0 : 1)} ${units[unit]}`;
+}
+
+function spanLabel(ms) {
+  const seconds = Math.round((Number(ms) || 0) / 1000);
+  if (seconds < 1) return "under 1s";
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+// Proof of work for a finished scan, built only from the stored record. A field that was not
+// recorded is left out rather than guessed.
+export function scanProof(scan) {
+  if (!scan) return "";
+
+  const parts = [`${num(scan.filesScanned)} files read`];
+  if (Number(scan.bytesScanned) > 0) parts.push(`${byteSize(scan.bytesScanned)} hashed`);
+  if (Number(scan.durationMs) > 0) parts.push(`took ${spanLabel(scan.durationMs)}`);
+  if (scan.engineVersion) parts.push(`engine ${scan.engineVersion}`);
+  if (Number(scan.skipped) > 0) parts.push(`${num(scan.skipped)} skipped`);
+  if (scan.truncated) parts.push(`stopped early (${scan.stopReason || "limit reached"})`);
+  return parts.join(" · ");
 }
 
 export function relativeTime(value) {
@@ -140,7 +175,6 @@ export function sevClass(severity) {
 
 export function statusClass(status) {
   if (status === "Under review") return "review";
-  if (status === "Contained (demo)") return "contained";
   return "open";
 }
 

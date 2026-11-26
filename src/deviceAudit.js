@@ -8,7 +8,8 @@ const { promisify } = require("node:util");
 
 const execFileAsync = promisify(execFile);
 
-const RULES_VERSION = "2026.11";
+// 2026.12 adds the ransomware-shield posture check, so scores from before it are not comparable.
+const RULES_VERSION = "2026.12";
 const WEIGHT = { critical: 30, high: 18, medium: 10, low: 4, info: 0 };
 
 async function run(command, args = [], timeout = 8000) {

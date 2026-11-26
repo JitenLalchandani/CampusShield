@@ -94,8 +94,9 @@ each store version can promise.
 - **Breached-password check** — SHA-1 is computed in the browser; only the first five hash characters
   go to the Pwned Passwords range API (k-anonymity). The password and full hash never leave the device.
 - **Threat queue** — search, severity/status/type filters, sorting, paging, and a decision drawer.
-- **Actions and audit trail** — Investigate, Contain (label only), and Reopen, each appended to an
-  activity log with kind filters that now include device checks.
+- **Actions and audit trail** — Investigate and Reopen review decisions, each appended to an
+  activity log with kind filters that now include device checks. The old "Contain (demo)" action was
+  removed because it only changed a label. Each queued event also shows where it came from.
 - **Coverage** — an honest map of what is collected and what is not.
 - **Storage** — MongoDB Atlas when `MONGODB_URI` is set, otherwise a zero-config local JSON store.
 - **PWA, Electron, Capacitor** — installable web app, embedded-server desktop app, and native shells.
@@ -340,7 +341,7 @@ is configured. For LAN development over plain HTTP:
 | `GET` | `/api/activity` | Audit trail (`kind`, `limit`, `offset`) |
 | `POST` | `/api/events` | Ingest an approved event |
 | `POST` | `/api/scan` | Scan the local macOS log (macOS only, otherwise `501`) |
-| `POST` | `/api/alerts/:id/action` | `{"action":"Investigate" \| "Contain" \| "Reopen"}` |
+| `POST` | `/api/alerts/:id/action` | `{"action":"Investigate" \| "Reopen"}` (`Contain` returns 400) |
 | `DELETE` | `/api/events` | Clear events, actions, devices, scans, quarantine, and audit history |
 
 Device check example:
@@ -352,6 +353,18 @@ curl -X POST http://localhost:3000/api/protection/scan
 The ingest endpoint accepts events from an approved source but does not verify that submitted events
 are genuine. Accounts and tokens gate who can call the API, not whether an ingested event is true, so
 treat any event source as trusted input. Serve a deployment beyond localhost over HTTPS.
+
+## Ransomware shield (opt-in)
+
+Off by default. When on, CampusShield watches Documents, Desktop, Pictures, and any folders you add (inside your home folder, at most 10). It raises an alert when at least 25 files in one folder change within 10 seconds and at least 60% show a sign of encryption: an extension never seen in that folder, or a text file whose first 8 KB now looks random (entropy of 7.5 bits per byte or more). The three numbers are shown in the app and can be changed within fixed ranges.
+
+- **Contain** stops the suspect program and/or turns off network connections. The suspect is a best guess from open-file sampling (`lsof` on macOS and Linux; Sysinternals `handle.exe` on Windows only if it is already installed, never downloaded). It is labelled a suspect, not a culprit.
+- Network isolation records what it turned off, restores only that, and restores automatically after 30 minutes (5 to 240) unless you choose Keep isolated. A remote Contain can stop a program but turning the network off always needs approval on the protected computer.
+- Scoring: an open alert costs the critical weight (30) through the existing malware penalty and its 45-point cap. The posture check `ransomware-shield` costs 4 points when the shield is supported but off, and nothing when unsupported or unable to start. `RULES_VERSION` is 2026.12.
+- API: `GET /api/shield`, `PATCH /api/shield/settings`, `GET /api/shield/alerts`, `GET /api/shield/alerts/:id` (issues a 60-second single-use confirmation), and `POST` `contain`, `undo`, `keep-isolated`, `dismiss`. Changes need a signed-in account or the admin token; the viewer token is read-only.
+- Limits: this is a heuristic on file changes, not a kernel driver. It can miss slow encryption, can be wrong about the program, and cannot stop damage already done. Windows and Linux paths are untested on real machines.
+
+Manual check before relying on it: on a spare folder, rename 30 files to `.locked` within a few seconds, confirm the alert, then try Contain with only "Turn off network" and confirm Restore network brings the connection back.
 
 ## Scoring rules
 
@@ -414,7 +427,11 @@ treat any event source as trusted input. Serve a deployment beyond localhost ove
   recommendations.
 - Scheduled scans run only while the app/server process is open; there is no background service, so a
   missed schedule waits for the next launch instead of running silently.
-- Containment records a status only; no device, account, or network state is changed.
+- Queue actions record a review decision only; no device, account, or network state is changed.
+  Older stores that hold the removed "Contained (demo)" status show those events as Open.
+- Real data only: every score, count, and timestamp comes from a measurement on this computer. What
+  cannot be measured shows "Not checked" with a reason. The scan progress bar is indeterminate because
+  the total file count is unknown until the walk ends; the numbers beside it are the measurement.
 - Accounts are local to the server you run: no e-mail verification, password reset, or multi-factor
   authentication, and roles are only owner/member. The API is open to anyone who can reach it only
   until the first account (or API token) exists; after that, callers need a session or token.
