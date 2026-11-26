@@ -35,7 +35,8 @@ const KIND_META = {
   device: { icon: "shield", className: "device" },
   admin: { icon: "admin", className: "admin" },
   shield: { icon: "shield", className: "device" },
-  usb: { icon: "shield", className: "device" }
+  usb: { icon: "shield", className: "device" },
+  web: { icon: "shield", className: "device" }
 };
 
 export function esc(value) {

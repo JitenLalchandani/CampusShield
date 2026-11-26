@@ -376,6 +376,18 @@ Off by default. When on, CampusShield lists removable drives every few seconds. 
 - API: `GET /api/usb`, `PATCH /api/usb/settings`, `GET /api/usb/events[/:id]`, `POST /api/usb/drives/:id/scan`, `POST /api/usb/drives/:id/ignore`, `POST /api/usb/events/:id/dismiss`, `POST /api/usb/events/:id/quarantine-all` (needs a 60-second single-use confirmation). Changes need a signed-in account or the admin token.
 - Limits: drives plugged in and out between polls can be missed; only the top of the drive is checked for autorun tricks; Windows drive detection has not been verified on a real machine.
 
+## Web & phishing links (opt-in)
+
+A link checker, not a browser filter. Paste a link in Protection and CampusShield reads the text of it and says Blocked, Warning, Allowed by you, or No warning signs. It never opens the page, never follows redirects, and asks no outside reputation service. "No warning signs" is not a promise a site is safe.
+
+- Signs and points: numeric address 40, name before an `@` 40, mixed-script letters 40, lookalike of a known brand 45, brand name inside someone else's domain 35, non-English letters 15, link shortener 15, many subdomains 10, very long name 10, three or more hyphens 10, no HTTPS 10, `.zip`/`.mov` endings 10, sensitive words 10 (only when something else is off), very long link 5, code-running links (`javascript:`, `data:`, `vbscript:`) 100. The result lists every sign with its points. The warn score is 40 by default and can be set from 10 to 90.
+- Brand lookalikes are judged against a short built-in list of about 20 well-known sites. A site not on it can still be flagged by the other signs.
+- Lists: your own block and allow lists (up to 200 each; your allow list wins). An optional feed you choose, https only, up to 1 MB, is the only source of known-bad domains; if a refresh fails the last good list is kept and the error is shown.
+- Privacy: off by default. Only the website name of a warned or blocked link is saved, never the path, query, or fragment. Clean checks are never logged. Nothing watches your browsing.
+- Scoring: warned or blocked links are not device threats and do not change the score. The posture check `web-protection` costs 4 points when off and nothing when on. `RULES_VERSION` is 2026.14.
+- API: `GET /api/web`, `PATCH /api/web/settings`, `POST /api/web/check`, `POST /api/web/feed/refresh`, `GET /api/web/events[/:id]`, `POST /api/web/events/:id/dismiss`. Checks and changes need a signed-in account or the admin token; a check is limited to 30 a minute.
+- Limits: a new phishing site with a plain name will not be flagged, and an unusual real site can be. The registrable domain is a best guess from a short list of two-part endings.
+
 ## Scoring rules
 
 - Start at 100. Deduct 30 (critical), 18 (high), 10 (medium), 4 (low). Info and unverified checks cost 0.

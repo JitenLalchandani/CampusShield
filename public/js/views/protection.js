@@ -17,6 +17,7 @@ import {
 } from "../ui.js";
 import { bindShieldCard, renderShieldCard } from "./shield.js";
 import { bindUsbCard, renderUsbCard } from "./usb.js";
+import { bindWebCard, renderWebCard } from "./web.js";
 
 export const meta = {
   eyebrow: "Protection",
@@ -63,13 +64,15 @@ export async function render(root) {
     </div>
   `;
 
-  const [protection, summary, shieldStatus, shieldAlerts, usbStatus, usbEvents] = await Promise.all([
+  const [protection, summary, shieldStatus, shieldAlerts, usbStatus, usbEvents, webStatus, webEvents] = await Promise.all([
     api("/api/protection"),
     api("/api/summary"),
     api("/api/shield").catch(() => null),
     api("/api/shield/alerts?limit=10").then(data => data.alerts || []).catch(() => []),
     api("/api/usb").catch(() => null),
-    api("/api/usb/events?limit=10").then(data => data.events || []).catch(() => [])
+    api("/api/usb/events?limit=10").then(data => data.events || []).catch(() => []),
+    api("/api/web").catch(() => null),
+    api("/api/web/events?limit=10").then(data => data.events || []).catch(() => [])
   ]);
 
   const devices = Array.isArray(protection.devices) ? protection.devices : [];
@@ -257,6 +260,8 @@ export async function render(root) {
     ${renderShieldCard(shieldStatus, shieldAlerts)}
 
     ${renderUsbCard(usbStatus, usbEvents)}
+
+    ${renderWebCard(webStatus, webEvents)}
 
     <section class="card protect-section scan-section" id="scanSection">
       <div class="card-head">
@@ -467,6 +472,7 @@ export async function render(root) {
   bind(root);
   bindShieldCard(root, () => render(root));
   bindUsbCard(root, () => render(root));
+  bindWebCard(root, () => render(root));
 
   if (activeScan) pollScan(root, activeScan.id);
 }

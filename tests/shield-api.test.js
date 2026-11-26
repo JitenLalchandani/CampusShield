@@ -119,3 +119,21 @@ test("GET /api/usb reports an off USB auto-scan and rejects bad settings and for
     assert.equal((await call("GET", "/api/usb/events/nope")).status, 404);
     assert.equal((await call("POST", "/api/usb/events/nope/quarantine-all", { confirm: true })).status, 403);
   }));
+
+test("web: check validates input, reads a link without logging while off, and guards settings", () =>
+  withApp(async ({ call }) => {
+    assert.equal((await call("GET", "/api/web")).json.enabled, false);
+    assert.equal((await call("POST", "/api/web/check", {})).status, 400);
+    assert.equal((await call("POST", "/api/web/check", { url: "ftp://x.example" })).status, 400);
+
+    const checked = await call("POST", "/api/web/check", { url: "http://192.168.1.5/verify" });
+    assert.equal(checked.status, 200);
+    assert.equal(checked.json.verdict, "warn");
+    assert.equal(checked.json.logged, false);
+
+    assert.equal((await call("POST", "/api/web/check", { url: "https://example.com" }, { Origin: "https://evil.example" })).status, 403);
+    assert.equal((await call("PATCH", "/api/web/settings", { blocklist: ["not a domain"] })).status, 400);
+    assert.equal((await call("GET", "/api/web/events?status=bogus")).status, 400);
+    assert.equal((await call("GET", "/api/web/events/nope")).status, 404);
+    assert.equal((await call("POST", "/api/web/feed/refresh", {})).status, 409);
+  }));
